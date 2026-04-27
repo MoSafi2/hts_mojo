@@ -3,29 +3,154 @@
 # library: hts  link_name: hts
 # FFI mode: external_call
 
-from std.ffi import external_call, DEFAULT_RTLD, OwnedDLHandle, UnsafeUnion, c_char, c_double, c_float, c_int, c_long, c_long_long, c_short, c_uchar, c_uint, c_ulong, c_ushort
+from std.ffi import external_call, DEFAULT_RTLD, OwnedDLHandle, UnsafeUnion, c_char, c_double, c_float, c_int, c_long, c_long_long, c_short, c_uchar, c_uint, c_ulong, c_ushort, c_size_t
+from std.ffi import CStringSlice
 from std.memory import ImmutOpaquePointer, MutOpaquePointer
+from std.sys.info import size_of
 
 # macro hts_expand: function-like macros are preserved but not parsed
 
-def hts_expand(type_t: type_t, n: UInt, m: UInt, ptr: UnsafePointer[type, MutExternalOrigin]) -> None:
-    if n > m:
-        hts_realloc_or_die(n >= 1 ? n : 1, m, sizeof(m), sizeof(type), 0, &ptr, __func__)
+
+
+comptime c_void_ptr = UnsafePointer[NoneType, MutExternalOrigin]
+
 
 # define hts_expand ( type_t , n , m , ptr ) do { if ( ( n ) > ( m ) ) 
 #{ size_t hts_realloc_or_die ( size_t , size_t , size_t , size_t , int , void * * , const char * ) ;
 # ( m ) = hts_realloc_or_die ( ( n ) >= 1 ? ( n ) : 1 , ( m ) , sizeof ( m ) , sizeof ( type_t ) , 0 , ( void * * ) & ( ptr ) , __func__ ) ;
 # } } while ( 0 )
 
+
+def hts_realloc_or_die(
+    n: c_size_t,
+    m: c_size_t,
+    size_m: c_size_t,
+    size_t: c_size_t,
+    clear: c_int,
+    ptr: UnsafePointer[c_void_ptr, MutExternalOrigin],
+    func: UnsafePointer[UInt8, MutExternalOrigin],
+) abi("C") -> c_size_t:
+    return  external_call["hts_realloc_or_die",
+        c_size_t,
+        c_size_t,
+        c_size_t,
+        c_size_t,
+        c_size_t,
+        c_int,
+        UnsafePointer[c_void_ptr, MutExternalOrigin],
+        UnsafePointer[UInt8, MutExternalOrigin],
+    ](n, m, size_m, size_t, clear, ptr, func)
+
+
+def hts_expand[T: AnyType](
+    n: c_size_t,
+    mut m: c_size_t,
+    ptr: UnsafePointer[UnsafePointer[T, MutExternalOrigin], MutExternalOrigin],
+) raises abi("C") -> c_size_t:
+    if n > m:
+        var requested = n
+        if requested < 1:
+            requested = 1
+
+        # Equivalent of `(void **)&ptr`
+        var void_pp = ptr.bitcast[c_void_ptr]()
+
+        m = hts_realloc_or_die(
+            requested,
+            m,
+            UInt(size_of[c_size_t]()),
+            UInt(size_of[T]()),
+            0,
+            void_pp,
+            CStringSlice("hts_expand").as_bytes_with_nul().unsafe_ptr().unsafe_mut_cast[True]().unsafe_origin_cast[MutExternalOrigin](),
+        )
+
+    return m
+
+
+
+
 # macro hts_expand0: function-like macros are preserved but not parsed
 # define hts_expand0 ( type_t , n , m , ptr ) do { if ( ( n ) > ( m ) ) { size_t hts_realloc_or_die ( size_t , size_t , size_t , size_t , int , void * * , const char * ) ; ( m ) = hts_realloc_or_die ( ( n ) >= 1 ? ( n ) : 1 , ( m ) , sizeof ( m ) , sizeof ( type_t ) , 1 , ( void * * ) & ( ptr ) , __func__ ) ; } } while ( 0 )
+
+def hts_expand0[T: AnyType](
+    n: c_size_t,
+    mut m: c_size_t,
+    ptr: UnsafePointer[UnsafePointer[T, MutExternalOrigin], MutExternalOrigin],
+) raises abi("C") -> c_size_t:
+    if n > m:
+        var requested = n
+        if requested < 1:
+            requested = 1
+
+        # reinterpret (T**) as (void**)
+        var void_pp = ptr.bitcast[c_void_ptr]()
+
+        m = hts_realloc_or_die(
+            requested,
+            m,
+            UInt(size_of[c_size_t]()),
+            UInt(size_of[T]()),
+            1,  # <-- zero-initialize (difference vs hts_expand)
+            void_pp,
+            CStringSlice("hts_expand0").as_bytes_with_nul().unsafe_ptr().unsafe_mut_cast[True]().unsafe_origin_cast[MutExternalOrigin](),
+        )
+
+    return m
+
 
 
 # macro hts_resize: function-like macros are preserved but not parsed
 # define hts_resize ( type_t , num , size_ptr , ptr , flags ) ( ( num ) > ( * ( size_ptr ) ) ? hts_resize_array_ ( sizeof ( type_t ) , ( num ) , sizeof ( * ( size_ptr ) ) , ( size_ptr ) , ( void * * ) ( ptr ) , ( flags ) , __func__ ) : 0 )
+def hts_resize_array_(
+    item_size: c_size_t,
+    num: c_size_t,
+    size_size: c_size_t,
+    size_ptr: UnsafePointer[c_size_t, MutExternalOrigin],
+    ptr: UnsafePointer[c_void_ptr, MutExternalOrigin],
+    flags: c_int,
+    func: UnsafePointer[c_char, ImmutExternalOrigin],
+) -> c_int:
+    return external_call[
+        "hts_resize_array_",
+        c_int,
+        c_size_t,
+        c_size_t,
+        c_size_t,
+        UnsafePointer[c_size_t, MutExternalOrigin],
+        UnsafePointer[c_void_ptr, MutExternalOrigin],
+        c_int,
+        UnsafePointer[c_char, ImmutExternalOrigin],
+    ](item_size, num, size_size, size_ptr, ptr, flags, func)
+
+
+def hts_resize[T: AnyType](
+    num: c_size_t,
+    size_ptr: UnsafePointer[c_size_t, MutExternalOrigin],
+    ptr: UnsafePointer[c_void_ptr, MutExternalOrigin],
+    flags: c_int,
+) raises abi("C") -> c_int:
+    if num > size_ptr[]:
+        return hts_resize_array_(
+            UInt(size_of[T]()),
+            num,
+            UInt(size_of[c_size_t]()),
+            size_ptr,
+            ptr,
+            flags,
+            (CStringSlice("hts_resize")
+            .as_bytes_with_nul()
+            .unsafe_ptr()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutExternalOrigin]()
+            .bitcast[Int8]()
+            ),
+        )
+
+    return 0
 
 # macro cram_option: identifier reference macro is not emitted directly; only literal macros are currently supported
-# define cram_option hts_fmt_option
+comptime cram_option = hts_fmt_option
 
 # macro HTS_FILE_OPTS_INIT: unsupported macro replacement list
 # define HTS_FILE_OPTS_INIT { { 0 } , 0 }
@@ -35,18 +160,30 @@ def hts_expand(type_t: type_t, n: UInt, m: UInt, ptr: UnsafePointer[type, MutExt
 
 # macro HTS_POS_MIN: unsupported macro replacement list
 # define HTS_POS_MIN INT64_MIN
+comptime HTS_POS_MAX: Int64 = 9223372036854775807
+comptime HTS_POS_MIN: Int64 = -9223372036854775808
+
 
 # macro PRIhts_pos: unsupported macro replacement list
 # define PRIhts_pos PRId64
+comptime PRIhts_pos = "d"
 
 # macro hts_bin_first: function-like macros are preserved but not parsed
 # define hts_bin_first ( l ) ( ( ( 1 << ( ( ( l ) << 1 ) + ( l ) ) ) - 1 ) / 7 )
 
+def hts_bin_first(l: Int) -> Int:
+    return ((1 << ((l << 1) + l)) - 1) // 7
+
+
 # macro hts_bin_parent: function-like macros are preserved but not parsed
 # define hts_bin_parent ( b ) ( ( ( b ) - 1 ) >> 3 )
+def hts_bin_parent(b: Int) -> Int:
+    return (b - 1) >> 3
 
 # macro hts_itr_multi_destroy: function-like macros are preserved but not parsed
 # define hts_itr_multi_destroy ( iter ) hts_itr_destroy ( iter )
+def hts_itr_multi_destroy(iter: UnsafePointer[hts_itr_t, MutExternalOrigin]):
+    hts_itr_destroy(iter)
 
 # Resolve symbols from libraries already linked into this process.
 def _bindgen_dl() raises -> OwnedDLHandle:

@@ -7,23 +7,113 @@ from std.ffi import external_call, DEFAULT_RTLD, OwnedDLHandle, UnsafeUnion, c_c
 from std.memory import ImmutOpaquePointer, MutOpaquePointer
 
 
+comptime BAM_CIGAR_MASK = 0xF
+comptime BAM_CIGAR_SHIFT = 4
+comptime BAM_CIGAR_STR = "MIDNSHP=XB"
+comptime BAM_CIGAR_TYPE = 0x3C1A7
+
+
+
 # macro bam_cigar_op: function-like macros are preserved but not parsed
 # define bam_cigar_op ( c ) ( ( c ) & BAM_CIGAR_MASK )
+def bam_cigar_op(c: UInt32) abi("C") -> UInt32:
+    return c & BAM_CIGAR_MASK
 
 # macro bam_cigar_oplen: function-like macros are preserved but not parsed
 # define bam_cigar_oplen ( c ) ( ( c ) >> BAM_CIGAR_SHIFT )
+def bam_cigar_oplen(c: UInt32) abi("C")-> UInt32:
+    return c >> BAM_CIGAR_SHIFT
+
 
 # macro bam_cigar_opchr: function-like macros are preserved but not parsed
 # define bam_cigar_opchr ( c ) ( BAM_CIGAR_STR "??????" [ bam_cigar_op ( c ) ] )
+def bam_cigar_opchr(c: UInt32) abi("C") -> UInt8:
+    
+    cigar_chars = List[UInt8](
+        [UInt8(ord("M")),
+        UInt8(ord("I")),
+        UInt8(ord("D")),
+        UInt8(ord("N")),
+        UInt8(ord("S")),
+        UInt8(ord("H")),
+        UInt8(ord("P")),
+        UInt8(ord("=")),
+        UInt8(ord("X")),
+        UInt8(ord("B")),
+        UInt8(ord("?")),
+        UInt8(ord("?")),
+        UInt8(ord("?")),
+        UInt8(ord("?")),
+        UInt8(ord("?")),
+        UInt8(ord("?")),
+    ])
+
+    return cigar_chars[UInt8(bam_cigar_op(c))]
 
 # macro bam_cigar_gen: function-like macros are preserved but not parsed
 # define bam_cigar_gen ( l , o ) ( ( l ) << BAM_CIGAR_SHIFT | ( o ) )
+def bam_cigar_gen(l: UInt32, o: UInt32) -> UInt32:
+    return (l << BAM_CIGAR_SHIFT) | o
+
 
 # macro bam_cigar_type: function-like macros are preserved but not parsed
 # define bam_cigar_type ( o ) ( BAM_CIGAR_TYPE >> ( ( o ) << 1 ) & 3 )
+def bam_cigar_type(o: UInt32) -> UInt32:
+    return (BAM_CIGAR_TYPE >> (o << 1)) & 3
 
 # macro bam_is_rev: function-like macros are preserved but not parsed
 # define bam_is_rev ( b ) ( ( ( b ) -> core . flag & BAM_FREVERSE ) != 0 )
+def bam_is_rev(b: UnsafePointer[bam1_t, MutExternalOrigin]) -> Bool:
+    return (b[].core.flag & BAM_FREVERSE) != 0
+
+
+def bam_is_mrev(b: UnsafePointer[bam1_t, MutExternalOrigin]) -> Bool:
+    return (b[].core.flag & BAM_FMREVERSE) != 0
+
+
+def bam_get_qname(
+    b: UnsafePointer[bam1_t, MutExternalOrigin],
+) -> UnsafePointer[c_char, MutExternalOrigin]:
+    return b[].data.bitcast[c_char]()
+
+
+def bam_get_cigar(
+    b: UnsafePointer[bam1_t, MutExternalOrigin],
+) -> UnsafePointer[c_uint32_t, MutExternalOrigin]:
+    return (b[].data + Int(b[].core.l_qname)).bitcast[c_uint32_t]()
+
+
+def bam_get_seq(
+    b: UnsafePointer[bam1_t, MutExternalOrigin],
+) -> UnsafePointer[UInt8, MutExternalOrigin]:
+    return (
+        b[].data
+        + Int(b[].core.l_qname)
+        + (Int(b[].core.n_cigar) << 2)
+    )
+
+
+def bam_get_qual(
+    b: UnsafePointer[bam1_t, MutExternalOrigin],
+) -> UnsafePointer[UInt8, MutExternalOrigin]:
+    return (
+        b[].data
+        + Int(b[].core.l_qname)
+        + (Int(b[].core.n_cigar) << 2)
+        + ((Int(b[].core.l_qseq) + 1) >> 1)
+    )
+
+
+def bam_get_aux(
+    b: UnsafePointer[bam1_t, MutExternalOrigin],
+) -> UnsafePointer[UInt8, MutExternalOrigin]:
+    return (
+        b[].data
+        + Int(b[].core.l_qname)
+        + (Int(b[].core.n_cigar) << 2)
+        + ((Int(b[].core.l_qseq) + 1) >> 1)
+        + Int(b[].core.l_qseq)
+    )
 
 # macro bam_is_mrev: function-like macros are preserved but not parsed
 # define bam_is_mrev ( b ) ( ( ( b ) -> core . flag & BAM_FMREVERSE ) != 0 )
@@ -213,13 +303,6 @@ comptime BAM_CDIFF = c_int(8)
 
 comptime BAM_CBACK = c_int(9)
 
-comptime BAM_CIGAR_STR = "MIDNSHP=XB"
-
-comptime BAM_CIGAR_SHIFT = c_int(4)
-
-comptime BAM_CIGAR_MASK = c_int(15)
-
-comptime BAM_CIGAR_TYPE = c_int(246183)
 
 comptime BAM_FPAIRED = c_int(1)
 
