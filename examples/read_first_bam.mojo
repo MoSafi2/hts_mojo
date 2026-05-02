@@ -25,6 +25,7 @@ def main() raises:
     print("Query name:", record.query_name())
     print("Flag:", record.flag())
     print("Reference id:", record.reference_id())
+    print(record)
 
     var ref_name = header.reference_name(record.reference_id())
     if ref_name:

@@ -1,3 +1,5 @@
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+*.bam
+read_first_bam

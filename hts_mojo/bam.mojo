@@ -1,4 +1,5 @@
 from std.ffi import CStringSlice, c_char
+from std.format import Writable, Writer
 
 from hts_mojo._ffi.sam import (
     BAM_CBACK,
@@ -75,7 +76,7 @@ struct CigarElement(Copyable, Movable):
         return bam_cigar_opchr(self.op)
 
 
-struct BamRecord(Copyable, Movable):
+struct BamRecord(Copyable, Movable, Writable):
     var _record: Optional[UnsafePointer[bam1_t, MutExternalOrigin]]
 
     def __init__(out self) raises:
@@ -227,6 +228,83 @@ struct BamRecord(Copyable, Movable):
 
     def _has_flag(self, flag: Int32) -> Bool:
         return (Int32(self._ptr()[].core.flag) & flag) != 0
+
+    def write_to(self, mut writer: Some[Writer]):
+        writer.write(
+            self._query_name_or_star(),
+            "\t",
+            self.flag(),
+            "\t",
+            self.reference_id(),
+            "\t",
+            self._sam_pos(self.reference_start()),
+            "\t",
+            self.mapping_quality(),
+            "\t",
+            self._cigar_or_star(),
+            "\t",
+            self.next_reference_id(),
+            "\t",
+            self._sam_pos(self.next_reference_start()),
+            "\t",
+            self.template_length(),
+            "\n",
+            self._sequence_or_star(),
+            "\n",
+            self._qualities_or_star(),
+        )
+
+    def _query_name_or_star(self) -> String:
+        if not self._record:
+            return String("*")
+
+        var qname = bam_get_qname(self._ptr())
+        var result = String()
+        for i in range(Int(self._ptr()[].core.l_qname)):
+            var c = qname[i]
+            if c == 0:
+                break
+            result += String(chr(Int(c)))
+        if result.byte_length() == 0:
+            return String("*")
+        return result
+
+    def _cigar_or_star(self) -> String:
+        if not self._record or self._ptr()[].core.n_cigar == 0:
+            return String("*")
+
+        var raw_cigar = bam_get_cigar(self._ptr())
+        var result = String()
+        for i in range(Int(self._ptr()[].core.n_cigar)):
+            var raw = raw_cigar[i]
+            result += String(bam_cigar_oplen(raw))
+            result += String(chr(Int(bam_cigar_opchr(raw))))
+        return result
+
+    def _sequence_or_star(self) -> String:
+        if not self._record or self._ptr()[].core.l_qseq == 0:
+            return String("*")
+
+        var seq = bam_get_seq(self._ptr())
+        var result = String()
+        for i in range(Int(self._ptr()[].core.l_qseq)):
+            result += _base_char(bam_seqi(seq, i))
+        return result
+
+    def _qualities_or_star(self) -> String:
+        if not self._record or self._ptr()[].core.l_qseq == 0:
+            return String("*")
+
+        var qual = bam_get_qual(self._ptr())
+        var result = String()
+        for i in range(Int(self._ptr()[].core.l_qseq)):
+            result += String(chr(Int(qual[i] + UInt8(33))))
+        return result
+
+    def _sam_pos(self, pos: Int64) -> Int64:
+        if pos < 0:
+            return 0
+        return pos + 1
 
 
 struct BamHeader(Movable):
