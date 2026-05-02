@@ -1,0 +1,14 @@
+from hts_mojo.bam import (
+    BamRecord,
+    CIGAR_BACK,
+    CIGAR_DELETION,
+    CIGAR_HARD_CLIP,
+    CIGAR_INSERTION,
+    CIGAR_MATCH,
+    CIGAR_PADDING,
+    CIGAR_REFERENCE_SKIP,
+    CIGAR_SEQUENCE_MATCH,
+    CIGAR_SEQUENCE_MISMATCH,
+    CIGAR_SOFT_CLIP,
+    CigarElement,
+)
