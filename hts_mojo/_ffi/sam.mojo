@@ -5,14 +5,15 @@
 
 from std.ffi import external_call, DEFAULT_RTLD, OwnedDLHandle, UnsafeUnion, c_char, c_double, c_float, c_int, c_long, c_uchar, c_uint, c_ulong, c_ushort
 from std.memory import ImmutOpaquePointer, MutOpaquePointer
+from std.ffi import CStringSlice
+from hts_mojo._ffi.hts import hts_pos_t, hts_idx_t, hts_itr_t, htsFile, htsFormat, HTS_FMT_BAI
+from hts_mojo._ffi.hts import hts_itr_destroy, hts_idx_load, hts_close, hts_flush, hts_open, hts_open_format
 
 
 comptime BAM_CIGAR_MASK = 0xF
 comptime BAM_CIGAR_SHIFT = 4
 comptime BAM_CIGAR_STR = "MIDNSHP=XB"
 comptime BAM_CIGAR_TYPE = 0x3C1A7
-
-
 
 # macro bam_cigar_op: function-like macros are preserved but not parsed
 # define bam_cigar_op ( c ) ( ( c ) & BAM_CIGAR_MASK )
@@ -64,25 +65,31 @@ def bam_cigar_type(o: UInt32) -> UInt32:
 # macro bam_is_rev: function-like macros are preserved but not parsed
 # define bam_is_rev ( b ) ( ( ( b ) -> core . flag & BAM_FREVERSE ) != 0 )
 def bam_is_rev(b: UnsafePointer[bam1_t, MutExternalOrigin]) -> Bool:
-    return (b[].core.flag & BAM_FREVERSE) != 0
+    return (Int32(b[].core.flag) & BAM_FREVERSE) != 0
 
-
+# macro bam_is_mrev: function-like macros are preserved but not parsed
+# define bam_is_mrev ( b ) ( ( ( b ) -> core . flag & BAM_FMREVERSE ) != 0 )
 def bam_is_mrev(b: UnsafePointer[bam1_t, MutExternalOrigin]) -> Bool:
-    return (b[].core.flag & BAM_FMREVERSE) != 0
+    return (Int32(b[].core.flag) & BAM_FMREVERSE) != 0
 
 
+# macro bam_get_qname: function-like macros are preserved but not parsed
+# define bam_get_qname ( b ) ( ( char * ) ( b ) -> data )
 def bam_get_qname(
     b: UnsafePointer[bam1_t, MutExternalOrigin],
 ) -> UnsafePointer[c_char, MutExternalOrigin]:
     return b[].data.bitcast[c_char]()
 
-
+# macro bam_get_cigar: function-like macros are preserved but not parsed
+# define bam_get_cigar ( b ) ( ( uint32_t * ) ( ( b ) -> data + ( b ) -> core . l_qname ) )
 def bam_get_cigar(
     b: UnsafePointer[bam1_t, MutExternalOrigin],
-) -> UnsafePointer[c_uint32_t, MutExternalOrigin]:
-    return (b[].data + Int(b[].core.l_qname)).bitcast[c_uint32_t]()
+) -> UnsafePointer[UInt32, MutExternalOrigin]:
+    return (b[].data + Int(b[].core.l_qname)).bitcast[UInt32]()
 
 
+# macro bam_get_seq: function-like macros are preserved but not parsed
+# define bam_get_seq ( b ) ( ( b ) -> data + ( ( b ) -> core . n_cigar << 2 ) + ( b ) -> core . l_qname )
 def bam_get_seq(
     b: UnsafePointer[bam1_t, MutExternalOrigin],
 ) -> UnsafePointer[UInt8, MutExternalOrigin]:
@@ -91,8 +98,8 @@ def bam_get_seq(
         + Int(b[].core.l_qname)
         + (Int(b[].core.n_cigar) << 2)
     )
-
-
+# macro bam_get_qual: function-like macros are preserved but not parsed
+# define bam_get_qual ( b ) ( ( b ) -> data + ( ( b ) -> core . n_cigar << 2 ) + ( b ) -> core . l_qname + ( ( ( b ) -> core . l_qseq + 1 ) >> 1 ) )
 def bam_get_qual(
     b: UnsafePointer[bam1_t, MutExternalOrigin],
 ) -> UnsafePointer[UInt8, MutExternalOrigin]:
@@ -104,6 +111,8 @@ def bam_get_qual(
     )
 
 
+# macro bam_get_aux: function-like macros are preserved but not parsed
+# define bam_get_aux ( b ) ( ( b ) -> data + ( ( b ) -> core . n_cigar << 2 ) + ( b ) -> core . l_qname + ( ( ( b ) -> core . l_qseq + 1 ) >> 1 ) + ( b ) -> core . l_qseq )
 def bam_get_aux(
     b: UnsafePointer[bam1_t, MutExternalOrigin],
 ) -> UnsafePointer[UInt8, MutExternalOrigin]:
@@ -115,80 +124,176 @@ def bam_get_aux(
         + Int(b[].core.l_qseq)
     )
 
-# macro bam_is_mrev: function-like macros are preserved but not parsed
-# define bam_is_mrev ( b ) ( ( ( b ) -> core . flag & BAM_FMREVERSE ) != 0 )
 
-# macro bam_get_qname: function-like macros are preserved but not parsed
-# define bam_get_qname ( b ) ( ( char * ) ( b ) -> data )
 
-# macro bam_get_cigar: function-like macros are preserved but not parsed
-# define bam_get_cigar ( b ) ( ( uint32_t * ) ( ( b ) -> data + ( b ) -> core . l_qname ) )
 
-# macro bam_get_seq: function-like macros are preserved but not parsed
-# define bam_get_seq ( b ) ( ( b ) -> data + ( ( b ) -> core . n_cigar << 2 ) + ( b ) -> core . l_qname )
 
-# macro bam_get_qual: function-like macros are preserved but not parsed
-# define bam_get_qual ( b ) ( ( b ) -> data + ( ( b ) -> core . n_cigar << 2 ) + ( b ) -> core . l_qname + ( ( ( b ) -> core . l_qseq + 1 ) >> 1 ) )
-
-# macro bam_get_aux: function-like macros are preserved but not parsed
-# define bam_get_aux ( b ) ( ( b ) -> data + ( ( b ) -> core . n_cigar << 2 ) + ( b ) -> core . l_qname + ( ( ( b ) -> core . l_qseq + 1 ) >> 1 ) + ( b ) -> core . l_qseq )
 
 # macro bam_get_l_aux: function-like macros are preserved but not parsed
 # define bam_get_l_aux ( b ) ( ( b ) -> l_data - ( ( b ) -> core . n_cigar << 2 ) - ( b ) -> core . l_qname - ( b ) -> core . l_qseq - ( ( ( b ) -> core . l_qseq + 1 ) >> 1 ) )
+def bam_get_l_aux(b: UnsafePointer[bam1_t, MutExternalOrigin]) -> c_int:
+    var core = b[].core
+    return (
+        b[].l_data
+        - Int32(core.n_cigar << 2)
+        - Int32(core.l_qname)
+        - core.l_qseq
+        - ((core.l_qseq + 1) >> 1)
+    )
 
 # macro bam_seqi: function-like macros are preserved but not parsed
 # define bam_seqi ( s , i ) ( ( s ) [ ( i ) >> 1 ] >> ( ( ~ ( i ) & 1 ) << 2 ) & 0xf )
+def bam_seqi(
+    s: UnsafePointer[uint8_t, MutExternalOrigin],
+    i: Int,
+) -> uint8_t:
+    return uint8_t((s[i >> 1] >> (UInt8(~i & 1) << 2)) & 0xF)
 
 # macro bam_set_seqi: function-like macros are preserved but not parsed
 # define bam_set_seqi ( s , i , b ) ( ( s ) [ ( i ) >> 1 ] = ( ( s ) [ ( i ) >> 1 ] & ( 0xf0 >> ( ( ~ ( i ) & 1 ) << 2 ) ) ) | ( ( b ) << ( ( ~ ( i ) & 1 ) << 2 ) ) )
+def bam_set_seqi(
+    s: UnsafePointer[uint8_t, MutExternalOrigin],
+    i: Int,
+    b: uint8_t,
+) -> None:
+    var shift = (~i & 1) << 2
+    var idx = i >> 1
 
+    s[idx] = uint8_t(
+        (s[idx] & uint8_t(0xF0 >> shift))
+        | uint8_t(b << UInt8(shift))
+    )
+def _hd() raises -> UnsafePointer[c_char, ImmutExternalOrigin]:
+    return (
+        CStringSlice("HD\0")
+        .as_bytes_with_nul()
+        .unsafe_ptr()
+        .unsafe_origin_cast[ImmutExternalOrigin]()
+        .bitcast[c_char]()
+    )
 # macro sam_hdr_find_hd: function-like macros are preserved but not parsed
 # define sam_hdr_find_hd ( h , ks ) sam_hdr_find_line_id ( ( h ) , "HD" , NULL , NULL , ( ks ) )
+# def sam_hdr_find_hd(
+#     h: UnsafePointer[sam_hdr_t, MutExternalOrigin],
+#     ks: UnsafePointer[kstring_t, MutExternalOrigin],
+# ) raises -> c_int:
+#     return sam_hdr_find_line_id(h, _hd(), None, None, ks)
 
 # macro sam_hdr_find_tag_hd: function-like macros are preserved but not parsed
 # define sam_hdr_find_tag_hd ( h , key , ks ) sam_hdr_find_tag_id ( ( h ) , "HD" , NULL , NULL , ( key ) , ( ks ) )
+# def sam_hdr_find_tag_hd(
+#     h: UnsafePointer[sam_hdr_t, MutExternalOrigin],
+#     key: UnsafePointer[c_char, ImmutExternalOrigin],
+#     ks: UnsafePointer[kstring_t, MutExternalOrigin],
+# ) raises -> c_int:
+#     return sam_hdr_find_tag_id(h, _hd(), None, None, key, ks)
 
 # macro sam_hdr_update_hd: function-like macros are preserved but not parsed
+
 # define sam_hdr_update_hd ( h , ... ) sam_hdr_update_line ( ( h ) , "HD" , NULL , NULL , __VA_ARGS__ , NULL )
 
 # macro sam_hdr_remove_tag_hd: function-like macros are preserved but not parsed
 # define sam_hdr_remove_tag_hd ( h , key ) sam_hdr_remove_tag_id ( ( h ) , "HD" , NULL , NULL , ( key ) )
+# def sam_hdr_remove_tag_hd(
+#     h: UnsafePointer[sam_hdr_t, MutExternalOrigin],
+#     key: UnsafePointer[c_char, ImmutExternalOrigin],
+# ) raises -> c_int:
+#     return sam_hdr_remove_tag_id(h, _hd(), None, None, key)
+
+
 
 # macro bam_itr_destroy: function-like macros are preserved but not parsed
 # define bam_itr_destroy ( iter ) hts_itr_destroy ( iter )
+def bam_itr_destroy(iter: UnsafePointer[hts_itr_t, MutExternalOrigin]) -> None:
+    hts_itr_destroy(iter)
+
+
 
 # macro bam_itr_queryi: function-like macros are preserved but not parsed
 # define bam_itr_queryi ( idx , tid , beg , end ) sam_itr_queryi ( idx , tid , beg , end )
+def bam_itr_queryi(
+    idx: UnsafePointer[hts_idx_t, ImmutExternalOrigin],
+    tid: c_int,
+    beg: hts_pos_t,
+    end: hts_pos_t,
+) -> UnsafePointer[hts_itr_t, MutExternalOrigin]:
+    return sam_itr_queryi(idx, tid, beg, end)
+
 
 # macro bam_itr_querys: function-like macros are preserved but not parsed
 # define bam_itr_querys ( idx , hdr , region ) sam_itr_querys ( idx , hdr , region )
+def bam_itr_querys(
+    idx: UnsafePointer[hts_idx_t, ImmutExternalOrigin],
+    hdr: UnsafePointer[sam_hdr_t, MutExternalOrigin],
+    region: UnsafePointer[c_char, ImmutExternalOrigin],
+) -> UnsafePointer[hts_itr_t, MutExternalOrigin]:
+    return sam_itr_querys(idx, hdr, region)
 
 # macro bam_itr_next: function-like macros are preserved but not parsed
 # define bam_itr_next ( htsfp , itr , r ) sam_itr_next ( ( htsfp ) , ( itr ) , ( r ) )
+def bam_itr_next(
+    htsfp: UnsafePointer[htsFile, MutExternalOrigin],
+    itr: UnsafePointer[hts_itr_t, MutExternalOrigin],
+    r: UnsafePointer[bam1_t, MutExternalOrigin],
+) -> c_int:
+    return sam_itr_next(htsfp, itr, r)
 
 # macro bam_index_load: function-like macros are preserved but not parsed
 # define bam_index_load ( fn ) hts_idx_load ( ( fn ) , HTS_FMT_BAI )
+def bam_index_load(
+    fun: UnsafePointer[c_char, ImmutExternalOrigin],
+) -> UnsafePointer[hts_idx_t, MutExternalOrigin]:
+    return hts_idx_load(fun, HTS_FMT_BAI)
 
 # macro bam_index_build: function-like macros are preserved but not parsed
 # define bam_index_build ( fn , min_shift ) ( sam_index_build ( ( fn ) , ( min_shift ) ) )
+def bam_index_build(
+    fun: UnsafePointer[c_char, ImmutExternalOrigin],
+    min_shift: c_int,
+) -> c_int:
+    return sam_index_build(fun, min_shift)
+
 
 # macro sam_itr_destroy: function-like macros are preserved but not parsed
 # define sam_itr_destroy ( iter ) hts_itr_destroy ( iter )
+def sam_itr_destroy(iter: UnsafePointer[hts_itr_t, MutExternalOrigin]) -> None:
+    hts_itr_destroy(iter)
 
 # macro sam_itr_multi_next: function-like macros are preserved but not parsed
 # define sam_itr_multi_next ( htsfp , itr , r ) sam_itr_next ( htsfp , itr , r )
+def sam_itr_multi_next(
+    htsfp: UnsafePointer[htsFile, MutExternalOrigin],
+    itr: UnsafePointer[hts_itr_t, MutExternalOrigin],
+    r: UnsafePointer[bam1_t, MutExternalOrigin],
+) -> c_int:
+    return sam_itr_next(htsfp, itr, r)
 
 # macro sam_open: function-like macros are preserved but not parsed
 # define sam_open ( fn , mode ) ( hts_open ( ( fn ) , ( mode ) ) )
+def sam_open(
+    fun: UnsafePointer[c_char, ImmutExternalOrigin],
+    mode: UnsafePointer[c_char, ImmutExternalOrigin],
+) -> UnsafePointer[htsFile, MutExternalOrigin]:
+    return hts_open(fun, mode)
 
 # macro sam_open_format: function-like macros are preserved but not parsed
 # define sam_open_format ( fn , mode , fmt ) ( hts_open_format ( ( fn ) , ( mode ) , ( fmt ) ) )
+def sam_open_format(
+    fun: UnsafePointer[c_char, ImmutExternalOrigin],
+    mode: UnsafePointer[c_char, ImmutExternalOrigin],
+    fmt: UnsafePointer[htsFormat, ImmutExternalOrigin],
+) -> UnsafePointer[htsFile, MutExternalOrigin]:
+    return hts_open_format(fun, mode, fmt)
 
 # macro sam_flush: function-like macros are preserved but not parsed
 # define sam_flush ( fp ) hts_flush ( ( fp ) )
+def sam_flush(fp: UnsafePointer[htsFile, MutExternalOrigin]) -> c_int:
+    return hts_flush(fp)
 
 # macro sam_close: function-like macros are preserved but not parsed
 # define sam_close ( fp ) hts_close ( fp )
+def sam_close(fp: UnsafePointer[htsFile, MutExternalOrigin]) -> c_int:
+    return hts_close(fp)
 
 # variadic C function - not callable from thin FFI:
 # c_int sam_hdr_add_pg(h: UnsafePointer[sam_hdr_t, MutExternalOrigin], name: UnsafePointer[c_char, ImmutExternalOrigin], ...)
@@ -256,8 +361,6 @@ comptime size_t = UInt
 comptime uint32_t = UInt32
 
 comptime int8_t = Int8
-
-comptime hts_pos_t = c_long
 
 comptime uint16_t = UInt16
 
@@ -340,15 +443,6 @@ comptime HTS_MOD_UNCHECKED = c_int(-2)
 comptime HTS_MOD_REPORT_UNCHECKED = c_int(1)
 
 struct BGZF(Copyable, Movable):
-    pass
-
-struct htsFile(Copyable, Movable):
-    pass
-
-struct hts_idx_t(Copyable, Movable):
-    pass
-
-struct hts_itr_t(Copyable, Movable):
     pass
 
 struct hts_reglist_t(Copyable, Movable):

@@ -20,7 +20,6 @@ comptime c_void_ptr = UnsafePointer[NoneType, MutExternalOrigin]
 # ( m ) = hts_realloc_or_die ( ( n ) >= 1 ? ( n ) : 1 , ( m ) , sizeof ( m ) , sizeof ( type_t ) , 0 , ( void * * ) & ( ptr ) , __func__ ) ;
 # } } while ( 0 )
 
-
 def hts_realloc_or_die(
     n: c_size_t,
     m: c_size_t,
@@ -46,7 +45,7 @@ def hts_expand[T: AnyType](
     n: c_size_t,
     mut m: c_size_t,
     ptr: UnsafePointer[UnsafePointer[T, MutExternalOrigin], MutExternalOrigin],
-) raises abi("C") -> c_size_t:
+) raises -> c_size_t:
     if n > m:
         var requested = n
         if requested < 1:
@@ -62,7 +61,7 @@ def hts_expand[T: AnyType](
             UInt(size_of[T]()),
             0,
             void_pp,
-            CStringSlice("hts_expand").as_bytes_with_nul().unsafe_ptr().unsafe_mut_cast[True]().unsafe_origin_cast[MutExternalOrigin](),
+            CStringSlice("hts_expand\0").as_bytes_with_nul().unsafe_ptr().unsafe_mut_cast[True]().unsafe_origin_cast[MutExternalOrigin](),
         )
 
     return m
@@ -77,7 +76,7 @@ def hts_expand0[T: AnyType](
     n: c_size_t,
     mut m: c_size_t,
     ptr: UnsafePointer[UnsafePointer[T, MutExternalOrigin], MutExternalOrigin],
-) raises abi("C") -> c_size_t:
+) raises -> c_size_t:
     if n > m:
         var requested = n
         if requested < 1:
@@ -93,7 +92,7 @@ def hts_expand0[T: AnyType](
             UInt(size_of[T]()),
             1,  # <-- zero-initialize (difference vs hts_expand)
             void_pp,
-            CStringSlice("hts_expand0").as_bytes_with_nul().unsafe_ptr().unsafe_mut_cast[True]().unsafe_origin_cast[MutExternalOrigin](),
+            CStringSlice("hts_expand\0").as_bytes_with_nul().unsafe_ptr().unsafe_mut_cast[True]().unsafe_origin_cast[MutExternalOrigin](),
         )
 
     return m
