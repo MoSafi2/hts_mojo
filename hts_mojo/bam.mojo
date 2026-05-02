@@ -1,3 +1,5 @@
+from std.ffi import CStringSlice, c_char
+
 from hts_mojo._ffi.sam import (
     BAM_CBACK,
     BAM_CDEL,
@@ -36,6 +38,19 @@ from hts_mojo._ffi.sam import (
     bam_get_seq,
     bam_init1,
     bam_seqi,
+    sam_hdr_t,
+    samFile,
+    sam_close,
+    sam_hdr_destroy,
+    sam_hdr_dup,
+    sam_hdr_length,
+    sam_hdr_nref,
+    sam_hdr_read,
+    sam_hdr_str,
+    sam_hdr_tid2len,
+    sam_hdr_tid2name,
+    sam_open,
+    sam_read1,
 )
 
 
@@ -212,6 +227,145 @@ struct BamRecord(Copyable, Movable):
 
     def _has_flag(self, flag: Int32) -> Bool:
         return (Int32(self._ptr()[].core.flag) & flag) != 0
+
+
+struct BamHeader(Movable):
+    var _header: Optional[UnsafePointer[sam_hdr_t, MutExternalOrigin]]
+
+    def __init__(
+        out self, var header: UnsafePointer[sam_hdr_t, MutExternalOrigin]
+    ) raises:
+        if not header:
+            raise Error("sam_hdr_t allocation failed")
+        self._header = header
+
+    def __init__(out self, *, deinit take: Self):
+        self._header = take._header^
+
+    def __del__(deinit self):
+        if self._header:
+            sam_hdr_destroy(self._header.value())
+
+    def _ptr(self) -> UnsafePointer[sam_hdr_t, MutExternalOrigin]:
+        return self._header.value()
+
+    def _const_ptr(self) -> UnsafePointer[sam_hdr_t, ImmutExternalOrigin]:
+        return (
+            self._ptr()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutExternalOrigin]()
+        )
+
+    def text(self) raises -> String:
+        var header = self._ptr()
+        var result = String()
+        for i in range(Int(sam_hdr_length(header))):
+            result += String(chr(Int(sam_hdr_str(header)[i])))
+        return result^
+
+    def n_references(self) -> Int:
+        return Int(sam_hdr_nref(self._const_ptr()))
+
+    def reference_name(self, tid: Int32) -> Optional[String]:
+        if tid < 0 or tid >= Int32(sam_hdr_nref(self._const_ptr())):
+            return None
+
+        var name = sam_hdr_tid2name(self._const_ptr(), tid)
+        var result = String()
+        var i = 0
+        while True:
+            var c = name[i]
+            if c == 0:
+                break
+            result += String(chr(Int(c)))
+            i += 1
+        return result^
+
+    def reference_length(self, tid: Int32) -> Optional[Int64]:
+        if tid < 0 or tid >= Int32(sam_hdr_nref(self._const_ptr())):
+            return None
+
+        var length = sam_hdr_tid2len(self._const_ptr(), tid)
+        if length < 0:
+            return None
+        return Int64(length)
+
+
+struct BamReader(Movable):
+    var _file: Optional[UnsafePointer[samFile, MutExternalOrigin]]
+    var _header: Optional[UnsafePointer[sam_hdr_t, MutExternalOrigin]]
+
+    def __init__(out self, path: String) raises:
+        self._file = None
+        self._header = None
+
+        var path_c = _terminated(path)
+        var mode_c = _terminated(String("r"))
+        var file = sam_open(_cstr(path_c), _cstr(mode_c))
+        if not file:
+            raise Error("sam_open failed")
+
+        var header = sam_hdr_read(file)
+        if not header:
+            sam_close(file)
+            raise Error("sam_hdr_read failed")
+
+        self._file = file
+        self._header = header
+
+    def __del__(deinit self):
+        if self._file:
+            sam_close(self._file.value())
+        if self._header:
+            sam_hdr_destroy(self._header.value())
+
+    def _file_ptr(self) -> UnsafePointer[samFile, MutExternalOrigin]:
+        return self._file.value()
+
+    def _header_ptr(self) -> UnsafePointer[sam_hdr_t, MutExternalOrigin]:
+        return self._header.value()
+
+    def header(self) raises -> BamHeader:
+        var header = sam_hdr_dup(
+            self._header_ptr()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutExternalOrigin]()
+        )
+        if not header:
+            raise Error("sam_hdr_dup failed")
+        var result = BamHeader(header)
+        return result^
+
+    def read_next(mut self, mut record: BamRecord) raises -> Bool:
+        if not record._record:
+            raise Error("BamRecord is closed")
+
+        var rc = sam_read1(self._file_ptr(), self._header_ptr(), record._ptr())
+        if rc >= 0:
+            return True
+        if rc == -1:
+            return False
+        raise Error(String("sam_read1 failed with code ") + String(rc))
+
+    def next(mut self) raises -> Optional[BamRecord]:
+        var record = BamRecord()
+        if not self.read_next(record):
+            return None
+        return record^
+
+
+def _terminated(s: String) -> String:
+    return s + "\0"
+
+
+def _cstr(s: String) raises -> UnsafePointer[c_char, ImmutExternalOrigin]:
+    return (
+        CStringSlice(s)
+        .as_bytes_with_nul()
+        .unsafe_ptr()
+        .unsafe_origin_cast[ImmutExternalOrigin]()
+        .bitcast[c_char]()
+    )
 
 
 def _base_char(base: UInt8) -> String:
