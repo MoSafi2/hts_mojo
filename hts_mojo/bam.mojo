@@ -307,11 +307,11 @@ struct BamRecord(Copyable, Movable, Writable):
         return pos + 1
 
 
-struct BamHeader(Movable):
+struct AlignmenetFileHeader(Movable):
     var _header: Optional[UnsafePointer[sam_hdr_t, MutExternalOrigin]]
 
     def __init__(
-        out self, var header: UnsafePointer[sam_hdr_t, MutExternalOrigin]
+        out self, var header: Optional[UnsafePointer[sam_hdr_t, MutExternalOrigin]]
     ) raises:
         if not header:
             raise Error("sam_hdr_t allocation failed")
@@ -403,7 +403,7 @@ struct BamReader(Movable):
     def _header_ptr(self) -> UnsafePointer[sam_hdr_t, MutExternalOrigin]:
         return self._header.value()
 
-    def header(self) raises -> BamHeader:
+    def header(self) raises -> AlignmenetFileHeader:
         var header = sam_hdr_dup(
             self._header_ptr()
             .unsafe_mut_cast[False]()
@@ -411,7 +411,7 @@ struct BamReader(Movable):
         )
         if not header:
             raise Error("sam_hdr_dup failed")
-        var result = BamHeader(header)
+        var result = AlignmenetFileHeader(header)
         return result^
 
     def read_next(mut self, mut record: BamRecord) raises -> Bool:

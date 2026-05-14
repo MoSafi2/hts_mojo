@@ -1,6 +1,6 @@
 [workspace]
 authors = ["MoSafi2 <mohamed.mabrouk@rwth-aachen.de>"]
-channels = ["conda-forge", "bioconda", "https://conda.modular.com/max-nightly/"]
+channels = ["conda-forge", "bioconda", "https://conda.modular.com/max/"]
 name = "hts_mojo"
 platforms = ["linux-64"]
 version = "0.1.0"
@@ -9,7 +9,7 @@ version = "0.1.0"
 
 [dependencies]
 python = ">=3.14.4,<3.15"
-mojo = ">=1.0.0b2.dev2026050205,<2"
+mojo = ">=1.0.0b1,<2"
 htslib = { version = ">=1.23.1,<2", channel = "bioconda" }
 
 [pypi-dependencies]

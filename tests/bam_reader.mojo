@@ -1,6 +1,6 @@
 from std.ffi import CStringSlice, c_char, c_size_t
 
-from hts_mojo import BamHeader, BamReader, BamRecord
+from hts_mojo import AlignmenetFileHeader, BamReader, BamRecord
 from hts_mojo._ffi.hts import hts_expand, hts_free, hts_lib_shutdown
 from hts_mojo._ffi.sam import (
     BAM_CSOFT_CLIP,
@@ -67,9 +67,11 @@ def _make_record(
                 UInt32(seq_len - UInt(cigar_len)),
                 UInt32(BAM_CSOFT_CLIP),
             )
-        cigar_ptr = cigar.value().unsafe_mut_cast[False]().unsafe_origin_cast[
-            ImmutExternalOrigin
-        ]()
+        cigar_ptr = (
+            cigar.value()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutExternalOrigin]()
+        )
 
     var qname_c = _terminated(qname)
     var seq_c = _terminated(seq)
@@ -101,8 +103,7 @@ def _make_record(
 
 def _write_fixture(path: String) raises -> None:
     var header_text = String(
-        "@HD\tVN:1.6\tSO:coordinate\n"
-        "@SQ\tSN:chr1\tLN:1000\n"
+        "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:1000\n"
     )
     var header_text_c = _terminated(header_text)
     var header = sam_hdr_parse(
@@ -136,7 +137,7 @@ def _write_fixture(path: String) raises -> None:
         0,
         0,
         String("ACGTN"),
-        String("\x1e\x1f !\""),
+        String('\x1e\x1f !"'),
     )
     var second = _make_record(
         String("read-2"),
@@ -149,7 +150,7 @@ def _write_fixture(path: String) raises -> None:
         0,
         0,
         String("TTTTT"),
-        String("!\"#$%"),
+        String('!"#$%'),
     )
 
     rc = sam_write1(file, header, first._ptr())
@@ -179,11 +180,13 @@ def test_bam_reader_header_and_records() raises:
     if header.n_references() != 1:
         raise Error("header reference count mismatch")
     if header.text() != String(
-        "@HD\tVN:1.6\tSO:coordinate\n"
-        "@SQ\tSN:chr1\tLN:1000\n"
+        "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:1000\n"
     ):
         raise Error("header text mismatch")
-    if not header.reference_name(0) or header.reference_name(0).value() != "chr1":
+    if (
+        not header.reference_name(0)
+        or header.reference_name(0).value() != "chr1"
+    ):
         raise Error("reference_name(0) mismatch")
 
     var record = BamRecord()

@@ -1,6 +1,6 @@
 from hts_mojo.bam import (
     BamRecord,
-    BamHeader,
+    AlignmenetFileHeader,
     BamReader,
     CIGAR_BACK,
     CIGAR_DELETION,
