@@ -13,4 +13,4 @@ mojo = ">=1.0.0b2,<2"
 htslib = { version = ">=1.23.1,<2", channel = "bioconda" }
 
 [pypi-dependencies]
-mojo-bindgen = ">=0.3.2, <0.4"
+mojo-bindgen = ">=0.3.4, <0.4"

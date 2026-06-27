@@ -72,10 +72,10 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/1d/fc/716c1e62e512ef1c160e7984a73a5fc7df45166f2ff3f254e71c58076f7c/libclang-18.1.1-py2.py3-none-manylinux2010_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/1e/d3/26bf1008eb3d2daa8ef4cacc7f3bfdc11818d111f7e2d0201bc6e3b49d45/annotated_doc-0.0.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/3f/f9/2b3ff4e56e5fa7debfaf9eb135d0da96f3e9a1d5b27222223c7296336e5f/typer-0.25.1-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/3f/fc/af192a136531bf8278e027ff76c1c301eb718328ea82edb40d2188c07f9e/mojo_bindgen-0.3.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b3/81/4da04ced5a082363ecfa159c010d200ecbd959ae410c10c0264a38cac0f5/markdown_it_py-4.2.0-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/db/cc/5b640806e735f83e6d4aac09c8ba8d5b62dc90040cfb1f065f24ee78f438/mojo_bindgen-0.3.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f4/7e/a72dd26f3b0f4f2bf1dd8923c85f7ceb43172af56d63c7383eb62b332364/pygments-2.20.0-py3-none-any.whl
 packages:
@@ -842,19 +842,6 @@ packages:
   - rich>=13.8.0
   - annotated-doc>=0.0.2
   requires_python: '>=3.10'
-- pypi: https://files.pythonhosted.org/packages/3f/fc/af192a136531bf8278e027ff76c1c301eb718328ea82edb40d2188c07f9e/mojo_bindgen-0.3.2-py3-none-any.whl
-  name: mojo-bindgen
-  version: 0.3.2
-  sha256: cfac71dcc71f9f813acc52ed26c3e5fb09c575832f4002a0cac4d3cb8794f3d6
-  requires_dist:
-  - libclang>=18.1.1,<19
-  - rich
-  - typer
-  - build>=1.4 ; extra == 'dev'
-  - pyright>=1.1.400 ; extra == 'dev'
-  - pytest>=9 ; extra == 'dev'
-  - ruff>=0.8 ; extra == 'dev'
-  requires_python: '>=3.14'
 - pypi: https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl
   name: rich
   version: 15.0.0
@@ -903,6 +890,19 @@ packages:
   - pytest-timeout ; extra == 'testing'
   - requests ; extra == 'testing'
   requires_python: '>=3.10'
+- pypi: https://files.pythonhosted.org/packages/db/cc/5b640806e735f83e6d4aac09c8ba8d5b62dc90040cfb1f065f24ee78f438/mojo_bindgen-0.3.4-py3-none-any.whl
+  name: mojo-bindgen
+  version: 0.3.4
+  sha256: 6695e397c5c8b091a64a3c4fc6e7dbe2cc37a7a63a4fd09c10062267033127c8
+  requires_dist:
+  - libclang>=18.1.1,<19
+  - rich
+  - typer
+  - build>=1.4 ; extra == 'dev'
+  - pyright>=1.1.400 ; extra == 'dev'
+  - pytest>=9 ; extra == 'dev'
+  - ruff>=0.8 ; extra == 'dev'
+  requires_python: '>=3.14'
 - pypi: https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl
   name: shellingham
   version: 1.5.4
