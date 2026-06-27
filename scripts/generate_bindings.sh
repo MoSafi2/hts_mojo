@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT_PATH="${1:-_ffi.mojo}"
-LAYOUT_PATH="${2:-layout_ffi.mojo}"
+OUT_PATH="${1:-hts_mojo/_ffi.mojo}"
+LAYOUT_PATH="${2:-tests/layout_ffi.mojo}"
 
 cd "$ROOT_DIR"
 mkdir -p "$(dirname "$OUT_PATH")" "$(dirname "$LAYOUT_PATH")"
