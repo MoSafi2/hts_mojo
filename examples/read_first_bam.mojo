@@ -22,22 +22,23 @@ def main() raises:
         print("Input contains no records")
         return
 
-    print("Query name:", record.query_name())
-    print("Flag:", record.flag())
-    print("Reference id:", record.reference_id())
     print(record)
+    # print("Query name:", record.query_name())
+    # print("Flag:", record.flag())
+    # print("Reference id:", record.reference_id())
+    # print(record)
 
-    var ref_id = record.reference_id()
-    if ref_id:
-        var ref_name = header.reference_name(ref_id.value())
-        if ref_name:
-            print("Reference name:", ref_name.value())
+    # var ref_id = record.reference_id()
+    # if ref_id:
+    #     var ref_name = header.reference_name(ref_id.value())
+    #     if ref_name:
+    #         print("Reference name:", ref_name.value())
 
-    var ref_start = record.reference_start()
-    print("Reference start:", ref_start)
+    # var ref_start = record.reference_start()
+    # print("Reference start:", ref_start)
 
-    var cigar = record.cigar_string()
-    if cigar:
-        print("CIGAR:", cigar.value())
+    # var cigar = record.cigar_string()
+    # if cigar:
+    #     print("CIGAR:", cigar.value())
 
-    print("Sequence:", record.query_sequence())
+    # print("Sequence:", record.query_sequence())

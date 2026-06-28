@@ -55,3 +55,8 @@ int hts_mojo_bam_aux_del_by_tag(bam1_t *b, const char *tag)
     }
     return bam_aux_del(b, aux);
 }
+
+const char *hts_mojo_bam_aux_tag(const uint8_t *s)
+{
+    return bam_aux_tag(s);
+}

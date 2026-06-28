@@ -41,3 +41,4 @@ int hts_mojo_bam_aux_update_str(
     bam1_t *b, const char *tag, int len, const char *data
 );
 int hts_mojo_bam_aux_del_by_tag(bam1_t *b, const char *tag);
+const char *hts_mojo_bam_aux_tag(const uint8_t *s);

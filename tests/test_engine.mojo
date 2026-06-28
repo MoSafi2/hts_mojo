@@ -247,6 +247,9 @@ def test_record_accessors_and_aux() raises:
     var rendered = String.write(record)
     if (
         rendered.find("qname=read-1") == -1
+        or rendered.find("flag=0x") == -1
+        or rendered.find("aux=0x") == -1
+        or rendered.find("raw=0x") == -1
         or rendered.find("cigar=5M") == -1
         or rendered.find("seq=ACGTN") == -1
     ):

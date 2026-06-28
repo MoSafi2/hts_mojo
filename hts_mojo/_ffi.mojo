@@ -12260,3 +12260,6 @@ def hts_mojo_bam_aux_update_str(b: Optional[UnsafePointer[bam1_t, MutUntrackedOr
 
 def hts_mojo_bam_aux_del_by_tag(b: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]], tag: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]) abi("C") -> c_int:
     return external_call["hts_mojo_bam_aux_del_by_tag", c_int, Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]](b, tag)
+
+def hts_mojo_bam_aux_tag(s: Optional[UnsafePointer[uint8_t, ImmutUntrackedOrigin]]) abi("C") -> Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]:
+    return external_call["hts_mojo_bam_aux_tag", Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], Optional[UnsafePointer[uint8_t, ImmutUntrackedOrigin]]](s)

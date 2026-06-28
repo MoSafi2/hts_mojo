@@ -1,6 +1,20 @@
 from std.ffi import c_char, CStringSlice
 from std.io import Writer as IOWriter
 from hts_mojo import _raw
+from hts_mojo._ffi import (
+    bam_aux2A,
+    bam_aux2Z,
+    bam_aux2f,
+    bam_aux2i,
+    bam_auxB2f,
+    bam_auxB2i,
+    bam_auxB_len,
+    bam_aux_first,
+    bam_aux_next,
+    hts_mojo_bam_aux_tag,
+)
+
+comptime _HEX_DIGITS = "0123456789abcdef"
 
 
 @fieldwise_init
@@ -339,6 +353,75 @@ def _field_value(field: String, key: String) -> Optional[String]:
     for i in range(3, field.byte_length()):
         value += String(field[byte=i])
     return value
+
+
+def _hex_byte(value: UInt8) -> String:
+    var result = String("0x")
+    result += String(_HEX_DIGITS[byte=Int(value >> 4)])
+    result += String(_HEX_DIGITS[byte=Int(value & UInt8(0xF))])
+    return result
+
+
+def _hex_u16(value: UInt16) -> String:
+    var result = String("0x")
+    result += String(_HEX_DIGITS[byte=Int((value >> 12) & UInt16(0xF))])
+    result += String(_HEX_DIGITS[byte=Int((value >> 8) & UInt16(0xF))])
+    result += String(_HEX_DIGITS[byte=Int((value >> 4) & UInt16(0xF))])
+    result += String(_HEX_DIGITS[byte=Int(value & UInt16(0xF))])
+    return result
+
+
+def _optional_int64_to_string(value: Optional[Int64]) -> String:
+    if not value:
+        return String("*")
+    return String(value.value())
+
+
+def _raw_bytes_to_hex(bytes: List[UInt8]) -> String:
+    var result = String("0x")
+    for byte in bytes:
+        result += String(_HEX_DIGITS[byte=Int(byte >> 4)])
+        result += String(_HEX_DIGITS[byte=Int(byte & UInt8(0xF))])
+    return result
+
+
+def _aux_value_to_string(
+    aux: UnsafePointer[UInt8, ImmutUntrackedOrigin],
+) -> String:
+    var aux_type = String(chr(Int(aux[0])))
+    if (
+        aux_type == "c"
+        or aux_type == "C"
+        or aux_type == "s"
+        or aux_type == "S"
+        or aux_type == "i"
+        or aux_type == "I"
+    ):
+        return String(bam_aux2i(aux))
+    if aux_type == "f" or aux_type == "d":
+        return String(bam_aux2f(aux))
+    if aux_type == "A":
+        return String(chr(Int(bam_aux2A(aux))))
+    if aux_type == "Z" or aux_type == "H":
+        var ptr = bam_aux2Z(aux)
+        if not ptr:
+            return String()
+        return _cstring_to_string(ptr.value())
+    if aux_type == "B":
+        var subtype = String(chr(Int(aux[1])))
+        var length = Int(bam_auxB_len(aux))
+        var result = String(subtype)
+        result += "["
+        for i in range(length):
+            if i > 0:
+                result += ","
+            if subtype == "f" or subtype == "d":
+                result += String(bam_auxB2f(aux, UInt32(i)))
+            else:
+                result += String(bam_auxB2i(aux, UInt32(i)))
+        result += "]"
+        return result
+    return String("?")
 
 
 def _writer_mode(
@@ -818,21 +901,37 @@ struct Record(Movable, Writable):
 
     def write_to[w: IOWriter](self, mut writer: w):
         writer.write(
-            "Record(qname=",
+            "Record{qname=",
             self._query_name_or_default(),
             ", flag=",
-            self.flag_bits(),
+            _hex_u16(self.flag_bits()),
             ", tid=",
             self.raw_reference_id(),
             ", pos0=",
             self.raw_reference_start(),
+            ", end0=",
+            _optional_int64_to_string(self.reference_end()),
+            ", len=",
+            self.query_length(),
             ", mapq=",
             self.mapping_quality(),
+            ", mtid=",
+            self.raw_next_reference_id(),
+            ", mpos0=",
+            self.raw_next_reference_start(),
+            ", isize=",
+            self.template_length(),
+            ", aux=",
+            self._aux_summary(),
+            ", raw=",
+            _raw_bytes_to_hex(self._raw_bytes()),
             ", cigar=",
             self._cigar_string_or_default(),
             ", seq=",
             self._query_sequence_or_default(),
-            ")",
+            ", qual=",
+            self._query_qualities_or_default(),
+            "}",
         )
 
     def _query_name_or_default(self) -> String:
@@ -870,6 +969,53 @@ struct Record(Movable, Writable):
         if result.byte_length() == 0:
             return String("*")
         return result^
+
+    def _query_qualities_or_default(self) -> String:
+        var qual = self._raw.borrowed_qual_ptr()
+        if not qual:
+            return String("*")
+
+        var result = String()
+        for i in range(self._raw.l_seq()):
+            result += String(chr(Int(qual.value()[i] + UInt8(33))))
+        return result^
+
+    def _raw_bytes(self) -> List[UInt8]:
+        var result = List[UInt8]()
+        var data = self._raw._data_ptr()
+        if not data:
+            return result^
+        for i in range(self._raw._data_len()):
+            result.append(data.value()[i])
+        return result^
+
+    def _aux_summary(self) -> String:
+        var result = String("[")
+        var record_ptr = (
+            self._raw.unsafe_ptr_unchecked()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutUntrackedOrigin]()
+        )
+        var aux = bam_aux_first(record_ptr)
+        var first = True
+        while aux:
+            var aux_read = aux.value().unsafe_mut_cast[False]().unsafe_origin_cast[
+                ImmutUntrackedOrigin
+            ]()
+            if not first:
+                result += ", "
+            first = False
+            var tag = hts_mojo_bam_aux_tag(aux_read)
+            if tag:
+                result += _cstring_to_string(tag.value())
+            else:
+                result += String("??")
+            result += "="
+            result += _aux_value_to_string(aux_read)
+            aux = bam_aux_next(record_ptr, aux_read)
+        result += "]"
+        return result^
+
 
 
 @fieldwise_init
