@@ -9,16 +9,14 @@ from hts_mojo.aln import (
     CIGAR_SEQUENCE_MATCH,
     CIGAR_SEQUENCE_MISMATCH,
     CIGAR_SOFT_CLIP,
+    CigarOp,
     CigarElement,
     Header as AlignmenetFileHeader,
-    HeaderView,
     IndexedReader,
     ReadOptions,
     Reader as BamReader,
     Record as BamRecord,
-    RecordView,
     Region,
     WriteOptions,
     Writer,
 )
-

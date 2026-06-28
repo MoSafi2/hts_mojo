@@ -1,38 +1,21 @@
-from std.ffi import c_char
+from std.ffi import c_char, CStringSlice
 from hts_mojo import _raw
-from hts_mojo._ffi import (
-    bam1_core_t,
-    bam1_t,
-    bam_endpos,
-    sam_hdr_length,
-    sam_hdr_dup,
-    sam_hdr_name2tid,
-    sam_hdr_nref,
-    sam_hdr_str,
-    sam_hdr_tid2len,
-    sam_hdr_tid2name,
-    sam_hdr_t,
-    sam_hdr_write,
-    sam_read1,
-    sam_write1,
-    uint32_t,
-)
 
 
 @fieldwise_init
-struct CIGAR_OP(Comparable, TrivialRegisterPassable):
+struct CigarOp(Comparable, TrivialRegisterPassable):
     var value: UInt32
 
-    comptime CIGAR_MATCH = Self(0)
-    comptime CIGAR_INSERTION = Self(1)
-    comptime CIGAR_DELETION = Self(2)
-    comptime CIGAR_REFERENCE_SKIP = Self(3)
-    comptime CIGAR_SOFT_CLIP = Self(4)
-    comptime CIGAR_HARD_CLIP = Self(5)
-    comptime CIGAR_PADDING = Self(6)
-    comptime CIGAR_SEQUENCE_MATCH = Self(7)
-    comptime CIGAR_SEQUENCE_MISMATCH = Self(8)
-    comptime CIGAR_BACK = Self(9)
+    comptime Match = Self(0)
+    comptime Insertion = Self(1)
+    comptime Deletion = Self(2)
+    comptime ReferenceSkip = Self(3)
+    comptime SoftClip = Self(4)
+    comptime HardClip = Self(5)
+    comptime Padding = Self(6)
+    comptime SequenceMatch = Self(7)
+    comptime SequenceMismatch = Self(8)
+    comptime Back = Self(9)
 
     def __eq__(self: Self, other: Self) -> Bool:
         return self.value == other.value
@@ -44,48 +27,62 @@ struct CIGAR_OP(Comparable, TrivialRegisterPassable):
 @fieldwise_init
 struct Region(Copyable, Movable):
     var contig: String
-    var start: Int64
-    var end: Int64
+    var start0: Int64
+    var end0: Int64
+
+    @staticmethod
+    def zero_based(contig: String, start0: Int64, end0: Int64) -> Self:
+        return Self(contig, start0, end0)
+
+    @staticmethod
+    def one_based_closed(contig: String, start1: Int64, end1: Int64) raises -> Self:
+        if start1 <= 0:
+            raise Error("1-based region start must be positive")
+        if end1 < start1:
+            raise Error("1-based region end must be >= start")
+        return Self(contig, start1 - 1, end1)
 
 
 @fieldwise_init
 struct CigarElement(Copyable, Movable):
-    var op: CIGAR_OP
+    var op: CigarOp
     var length: UInt32
+
+
+comptime CIGAR_MATCH = CigarOp.Match
+comptime CIGAR_INSERTION = CigarOp.Insertion
+comptime CIGAR_DELETION = CigarOp.Deletion
+comptime CIGAR_REFERENCE_SKIP = CigarOp.ReferenceSkip
+comptime CIGAR_SOFT_CLIP = CigarOp.SoftClip
+comptime CIGAR_HARD_CLIP = CigarOp.HardClip
+comptime CIGAR_PADDING = CigarOp.Padding
+comptime CIGAR_SEQUENCE_MATCH = CigarOp.SequenceMatch
+comptime CIGAR_SEQUENCE_MISMATCH = CigarOp.SequenceMismatch
+comptime CIGAR_BACK = CigarOp.Back
+
+
+def _cstring_to_string(
+    ptr: UnsafePointer[c_char, ImmutUntrackedOrigin]
+) -> String:
+    var c_str = CStringSlice(unsafe_from_ptr=ptr)
+    return String(c_str)
 
 
 struct Header(Movable):
     var _raw: _raw.RawSamHeader
 
+    def __init__(out self) raises:
+        self._raw = _raw.RawSamHeader()
+
     @staticmethod
     def empty() raises -> Self:
-        var result = Self()
-        result._raw = _raw.RawSamHeader()
-        return result^
+        return Self()
 
     @staticmethod
     def from_text(text: String) raises -> Self:
         var result = Self()
         result._raw = _raw.RawSamHeader.parse(text)
         return result^
-
-    @staticmethod
-    def from_view(view: HeaderView) raises -> Self:
-        var result = Self()
-        result._raw = _raw.RawSamHeader.adopt(
-            sam_hdr_dup(
-                view._require_ptr()
-                .unsafe_mut_cast[False]()
-                .unsafe_origin_cast[ImmutUntrackedOrigin]()
-            )
-        )
-        return result^
-
-    def __init__(out self) raises:
-        self._raw = _raw.RawSamHeader()
-
-    def view(self) -> HeaderView:
-        return HeaderView(self._raw.ptr())
 
     def clone(self) raises -> Self:
         var result = Self()
@@ -96,16 +93,35 @@ struct Header(Movable):
         return self._raw.n_ref()
 
     def text(self) -> String:
-        return self.view().text()
+        var ptr = self._raw.borrowed_text_ptr()
+        if not ptr:
+            return String()
+        return _cstring_to_string(ptr.value())
 
     def reference_name(self, tid: Int32) -> Optional[String]:
-        return self.view().reference_name(tid)
+        var name = self._raw.tid2name(tid)
+        if not name:
+            return None
+        return _cstring_to_string(name.value())
 
     def reference_length(self, tid: Int32) -> Optional[Int64]:
-        return self.view().reference_length(tid)
+        var length = self._raw.tid2len(tid)
+        if length < 0:
+            return None
+        return Int64(length)
 
-    def tid(self, contig: String) -> Int32:
-        return self.view().tid(contig)
+    def tid(self, contig: String) raises -> Optional[Int32]:
+        var contig_c = contig
+        var tid = self._raw.name2tid(contig_c)
+        if tid < 0:
+            return None
+        return tid
+
+    def require_tid(self, contig: String) raises -> Int32:
+        var tid = self.tid(contig)
+        if not tid:
+            raise Error("unknown reference name")
+        return tid.value()
 
 
 struct Record(Movable):
@@ -117,91 +133,136 @@ struct Record(Movable):
     def clone(self) raises -> Self:
         var result = Self()
         result._raw = self._raw.dup()
-        return result
+        return result^
 
     def flag(self) -> UInt16:
-        return self.view().flag()
+        return self._raw.flag()
 
     def reference_id(self) -> Int32:
-        return self.view().reference_id()
+        return self._raw.tid()
 
     def reference_start(self) -> Int64:
-        return self.view().reference_start()
+        return self._raw.pos0()
 
     def reference_end(self) -> Optional[Int64]:
-        return self.view().reference_end()
+        if self.is_unmapped() or self._raw.n_cigar() == 0:
+            return None
+        return self._raw.end_pos0()
 
     def reference_length(self) -> Optional[Int64]:
-        return self.view().reference_length()
+        var end = self.reference_end()
+        if not end:
+            return None
+        return end.value() - self.reference_start()
 
     def mapping_quality(self) -> UInt8:
-        return self.view().mapping_quality()
+        return self._raw.mapq()
 
     def next_reference_id(self) -> Int32:
-        return self.view().next_reference_id()
+        return self._raw.mate_tid()
 
     def next_reference_start(self) -> Int64:
-        return self.view().next_reference_start()
+        return self._raw.mate_pos0()
 
     def template_length(self) -> Int64:
-        return self.view().template_length()
+        return self._raw.insert_size()
 
     def query_length(self) -> Int32:
-        return self.view().query_length()
+        return Int32(self._raw.l_seq())
 
     def query_name(self) raises -> String:
-        return self.view().query_name()
+        return _cstring_to_string(self._raw.borrowed_qname_ptr())
 
     def cigar(self) raises -> List[CigarElement]:
-        return self.view().cigar()
+        var result = List[CigarElement]()
+        var ptr = self._raw.borrowed_cigar_ptr()
+        if not ptr:
+            return result^
+        for i in range(self._raw.n_cigar()):
+            var raw = ptr.value()[i]
+            result.append(CigarElement(CigarOp(raw & UInt32(0xF)), raw >> 4))
+        return result^
 
     def cigar_string(self) raises -> Optional[String]:
-        return self.view().cigar_string()
+        if self._raw.n_cigar() == 0:
+            return None
+
+        var result = String()
+        for item in self.cigar():
+            result += String(item.length)
+            result += _cigar_op_char(item.op)
+        return result
 
     def query_sequence(self) raises -> String:
-        return self.view().query_sequence()
+        var seq = self._raw.borrowed_seq_ptr()
+        if not seq:
+            return String()
+
+        var result = String()
+        for i in range(self._raw.l_seq()):
+            var byte = seq.value()[i >> 1]
+            if (i & 1) == 0:
+                result += _seq_char(byte >> 4)
+            else:
+                result += _seq_char(byte & UInt8(0xF))
+        return result
 
     def query_qualities(self) raises -> List[UInt8]:
-        return self.view().query_qualities()
+        var result = List[UInt8]()
+        var qual = self._raw.borrowed_qual_ptr()
+        if not qual:
+            return result^
+        for i in range(self._raw.l_seq()):
+            result.append(qual.value()[i])
+        return result^
 
     def aux_bytes(self) raises -> List[UInt8]:
-        return self.view().aux_bytes()
+        var result = List[UInt8]()
+        var aux = self._raw.borrowed_aux_ptr()
+        if not aux:
+            return result^
+        for i in range(self._raw.aux_len()):
+            result.append(aux.value()[i])
+        return result^
 
     def is_paired(self) -> Bool:
-        return self.view().is_paired()
+        return self._has_flag(UInt16(0x1))
 
     def is_proper_pair(self) -> Bool:
-        return self.view().is_proper_pair()
+        return self._has_flag(UInt16(0x2))
 
     def is_unmapped(self) -> Bool:
-        return self.view().is_unmapped()
+        return self._has_flag(UInt16(0x4))
 
     def mate_is_unmapped(self) -> Bool:
-        return self.view().mate_is_unmapped()
+        return self._has_flag(UInt16(0x8))
 
     def is_reverse(self) -> Bool:
-        return self.view().is_reverse()
+        return self._has_flag(UInt16(0x10))
 
     def mate_is_reverse(self) -> Bool:
-        return self.view().mate_is_reverse()
+        return self._has_flag(UInt16(0x20))
 
     def is_read1(self) -> Bool:
-        return self.view().is_read1()
+        return self._has_flag(UInt16(0x40))
 
     def is_read2(self) -> Bool:
-        return self.view().is_read2()
+        return self._has_flag(UInt16(0x80))
 
     def is_secondary(self) -> Bool:
-        return self.view().is_secondary()
+        return self._has_flag(UInt16(0x100))
 
     def is_qcfail(self) -> Bool:
-        return self.view().is_qcfail()
+        return self._has_flag(UInt16(0x200))
 
     def is_duplicate(self) -> Bool:
-        return self.view().is_duplicate()
+        return self._has_flag(UInt16(0x400))
 
     def is_supplementary(self) -> Bool:
-        return self.view().is_supplementary()
+        return self._has_flag(UInt16(0x800))
+
+    def _has_flag(self, flag: UInt16) -> Bool:
+        return (self._raw.flag() & flag) != 0
 
 
 struct ReadOptions(Copyable, Movable):
@@ -237,13 +298,13 @@ struct Reader(Movable):
             self._file.set_threads(threads)
         self._header = self._file.read_header()
 
-    def header(self) -> HeaderView:
-        return HeaderView(self._header.ptr())
+    def header(self) raises -> Header:
+        var result = Header()
+        result._raw = self._header.dup()
+        return result^
 
     def read_into(mut self, mut record: Record) raises -> Bool:
-        var rc = Int(
-            sam_read1(self._file.ptr(), self._header.ptr(), record._raw.ptr())
-        )
+        var rc = self._file.read1_status(self._header, record._raw)
         if rc >= 0:
             return True
         if rc == -1:
@@ -292,36 +353,36 @@ struct IndexedReader(Movable):
     ) raises:
         self._reader = Reader(path, reference_path, threads)
         if index_path:
-            self._index = _raw.RawHtsIndex(
+            self._index = _raw.RawHtsIndex.load_at(
                 self._reader._file, path, index_path.value()
             )
         else:
-            self._index = _raw.RawHtsIndex(self._reader._file, path)
+            self._index = _raw.RawHtsIndex.load(self._reader._file, path)
         self._iter = None
 
-    def header(self) -> HeaderView:
+    def header(self) raises -> Header:
         return self._reader.header()
 
-    def fetch(self, region: Region) raises:
+    def fetch(mut self, region: Region) raises:
         if self._iter:
             self._iter = None
-        var tid = self.header().tid(region.contig)
-        if tid < 0:
-            raise Error("unknown reference name")
-        self._iter = _raw.RawHtsIterator(
-            self._index, tid, region.start, region.end
+        var tid = self.header().require_tid(region.contig)
+        self._iter = _raw.RawHtsIterator.queryi(
+            self._index, tid, region.start0, region.end0
         )
 
-    def fetch_string(self, region: String) raises:
+    def fetch_string(mut self, region: String) raises:
         if self._iter:
             self._iter = None
-        self._iter = _raw.RawHtsIterator(
+        self._iter = _raw.RawHtsIterator.querys(
             self._index, self._reader._header, region
         )
 
     def read_into(mut self, mut record: Record) raises -> Bool:
         if self._iter:
-            var rc = self._iter.value().next(self._reader._file, record._raw)
+            var rc = self._iter.value().next_status(
+                self._reader._file, record._raw
+            )
             if rc >= 0:
                 return True
             if rc == -1:
@@ -354,7 +415,7 @@ struct Writer(Movable):
     @staticmethod
     def open(
         path: String,
-        header: HeaderView,
+        header: Header,
         reference_path: Optional[String] = None,
         threads: Int = 0,
     ) raises -> Self:
@@ -363,7 +424,7 @@ struct Writer(Movable):
     def __init__(
         out self,
         path: String,
-        header: HeaderView,
+        header: Header,
         reference_path: Optional[String] = None,
         threads: Int = 0,
     ) raises:
@@ -372,40 +433,11 @@ struct Writer(Movable):
             self._file.set_reference(reference_path.value())
         if threads > 0:
             self._file.set_threads(threads)
-        self._header = _raw.RawSamHeader.adopt(
-            sam_hdr_dup(
-                header._require_ptr()
-                .unsafe_mut_cast[False]()
-                .unsafe_origin_cast[ImmutUntrackedOrigin]()
-            )
-        )
-        _raw._check_zero(
-            Int(
-                sam_hdr_write(
-                    self._file.ptr(),
-                    self._header.ptr()
-                    .unsafe_mut_cast[False]()
-                    .unsafe_origin_cast[ImmutUntrackedOrigin](),
-                )
-            ),
-            "failed to write header",
-        )
+        self._header = header._raw.dup()
+        self._file.write_header(self._header)
 
     def write(mut self, read record: Record) raises:
-        _raw._check_code(
-            Int(
-                sam_write1(
-                    self._file.ptr(),
-                    self._header.ptr()
-                    .unsafe_mut_cast[False]()
-                    .unsafe_origin_cast[ImmutUntrackedOrigin](),
-                    record._raw.ptr()
-                    .unsafe_mut_cast[False]()
-                    .unsafe_origin_cast[ImmutUntrackedOrigin](),
-                )
-            ),
-            "failed to write alignment record",
-        )
+        self._file.write1(self._header, record._raw)
 
     def set_threads(mut self, n_threads: Int) raises:
         self._file.set_threads(n_threads)
@@ -414,26 +446,26 @@ struct Writer(Movable):
         self._file.close()
 
 
-def _cigar_op_char(op: CIGAR_OP) -> String:
-    if op == CIGAR_OP.CIGAR_MATCH:
+def _cigar_op_char(op: CigarOp) -> String:
+    if op == CigarOp.Match:
         return String("M")
-    if op == CIGAR_OP.CIGAR_INSERTION:
+    if op == CigarOp.Insertion:
         return String("I")
-    if op == CIGAR_OP.CIGAR_DELETION:
+    if op == CigarOp.Deletion:
         return String("D")
-    if op == CIGAR_OP.CIGAR_REFERENCE_SKIP:
+    if op == CigarOp.ReferenceSkip:
         return String("N")
-    if op == CIGAR_OP.CIGAR_SOFT_CLIP:
+    if op == CigarOp.SoftClip:
         return String("S")
-    if op == CIGAR_OP.CIGAR_HARD_CLIP:
+    if op == CigarOp.HardClip:
         return String("H")
-    if op == CIGAR_OP.CIGAR_PADDING:
+    if op == CigarOp.Padding:
         return String("P")
-    if op == CIGAR_OP.CIGAR_SEQUENCE_MATCH:
+    if op == CigarOp.SequenceMatch:
         return String("=")
-    if op == CIGAR_OP.CIGAR_SEQUENCE_MISMATCH:
+    if op == CigarOp.SequenceMismatch:
         return String("X")
-    if op == CIGAR_OP.CIGAR_BACK:
+    if op == CigarOp.Back:
         return String("B")
     return String("?")
 

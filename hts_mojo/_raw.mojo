@@ -61,7 +61,7 @@ def _terminated(s: String) -> String:
     return result^
 
 
-def _cstr(mut s: String) raises -> UnsafePointer[c_char, ImmutUntrackedOrigin]:
+def _cstr_ptr(var s: String) raises -> UnsafePointer[c_char, ImmutUntrackedOrigin]:
     _ensure_nul(s)
     return (
         CStringSlice(s)
@@ -72,8 +72,8 @@ def _cstr(mut s: String) raises -> UnsafePointer[c_char, ImmutUntrackedOrigin]:
     )
 
 
-def _bytes_with_nul(
-    mut s: String,
+def _bytes_with_nul_ptr(
+    var s: String,
 ) raises -> UnsafePointer[UInt8, ImmutUntrackedOrigin]:
     _ensure_nul(s)
     return (
@@ -134,7 +134,7 @@ struct RawAlignmentFile(Movable):
     def __init__(out self, path: String, mode: String) raises:
         var path_c = path
         var mode_c = mode
-        self._ptr = hts_open(_cstr(path_c), _cstr(mode_c))
+        self._ptr = hts_open(_cstr_ptr(path_c), _cstr_ptr(mode_c))
         if not self._ptr:
             raise Error("failed to open alignment file")
 
@@ -161,7 +161,7 @@ struct RawAlignmentFile(Movable):
     def set_reference(mut self, reference_path: String) raises:
         var reference_path_c = reference_path
         _check_zero(
-            Int(hts_set_fai_filename(self.ptr(), _cstr(reference_path_c))),
+            Int(hts_set_fai_filename(self.ptr(), _cstr_ptr(reference_path_c))),
             "failed to set reference FASTA",
         )
         # TODO: Expose richer file-format option plumbing here when Mojo can call
@@ -222,7 +222,7 @@ struct RawSamHeader(Movable):
     def parse(text: String) raises -> Self:
         var text_c = text
         return Self.adopt(
-            sam_hdr_parse(UInt(text.byte_length()), _cstr(text_c))
+            sam_hdr_parse(UInt(text.byte_length()), _cstr_ptr(text_c))
         )
 
     @staticmethod
@@ -269,7 +269,7 @@ struct RawSamHeader(Movable):
 
     def name2tid(self, reference: String) raises -> Int32:
         var reference_c = reference
-        return Int32(sam_hdr_name2tid(self.ptr(), _cstr(reference_c)))
+        return Int32(sam_hdr_name2tid(self.ptr(), _cstr_ptr(reference_c)))
 
     def tid2name(
         self, tid: Int32
@@ -300,7 +300,7 @@ struct RawSamHeader(Movable):
             Int(
                 sam_hdr_add_lines(
                     self.ptr(),
-                    _cstr(line_c),
+                    _cstr_ptr(line_c),
                     UInt(line.byte_length()),
                 )
             ),
@@ -409,9 +409,9 @@ struct RawBamRecord(Movable):
             )
 
         var seq_len = Int(seq.byte_length())
-        var seq_c = _terminated(seq)
-        var qual_c = _terminated(qual)
-        var qual_bytes = _bytes_with_nul(qual_c)
+        var seq_c = seq
+        var qual_c = qual
+        var qual_bytes = _bytes_with_nul_ptr(qual_c)
         var encoded_qual = _OwnedByteBuffer(seq_len)
 
         for i in range(seq_len):
@@ -420,10 +420,11 @@ struct RawBamRecord(Movable):
                 raise Error("quality string must use SAM ASCII with +33 offset")
             encoded_qual.ptr().value()[i] = phred_ascii - UInt8(33)
 
-        var qname_c = _terminated(qname)
+        var qname_c = qname
+        _ensure_nul(qname_c)
         self.set1(
             UInt(qname_c.byte_length()),
-            _cstr(qname_c),
+            _cstr_ptr(qname_c),
             flag,
             tid,
             pos,
@@ -434,7 +435,7 @@ struct RawBamRecord(Movable):
             mpos,
             isize,
             UInt(seq_len),
-            _cstr(seq_c),
+            _cstr_ptr(seq_c),
             encoded_qual.ptr()
             .value()
             .unsafe_mut_cast[False]()
@@ -602,7 +603,7 @@ struct RawHtsIndex(Movable):
     def load(file: RawAlignmentFile, path: String) raises -> Self:
         var path_c = path
         return Self._adopt(
-            sam_index_load(file.ptr(), _cstr(path_c)),
+            sam_index_load(file.ptr(), _cstr_ptr(path_c)),
             "failed to load alignment index",
         )
 
@@ -613,7 +614,7 @@ struct RawHtsIndex(Movable):
         var path_c = path
         var index_path_c = index_path
         return Self._adopt(
-            sam_index_load2(file.ptr(), _cstr(path_c), _cstr(index_path_c)),
+            sam_index_load2(file.ptr(), _cstr_ptr(path_c), _cstr_ptr(index_path_c)),
             "failed to load alignment index",
         )
 
@@ -625,7 +626,10 @@ struct RawHtsIndex(Movable):
         var index_path_c = index_path
         return Self._adopt(
             sam_index_load3(
-                file.ptr(), _cstr(path_c), _cstr(index_path_c), Int32(flags)
+                file.ptr(),
+                _cstr_ptr(path_c),
+                _cstr_ptr(index_path_c),
+                Int32(flags),
             ),
             "failed to load alignment index",
         )
@@ -643,8 +647,8 @@ struct RawHtsIndex(Movable):
             _check_zero(
                 Int(
                     sam_index_build3(
-                        _cstr(path_c),
-                        _cstr(index_path_c),
+                        _cstr_ptr(path_c),
+                        _cstr_ptr(index_path_c),
                         Int32(min_shift),
                         Int32(threads),
                     )
@@ -656,7 +660,7 @@ struct RawHtsIndex(Movable):
         _check_zero(
             Int(
                 sam_index_build3(
-                    _cstr(path_c), None, Int32(min_shift), Int32(threads)
+                    _cstr_ptr(path_c), None, Int32(min_shift), Int32(threads)
                 )
             ),
             "failed to build alignment index",
@@ -714,7 +718,7 @@ struct RawHtsIterator(Movable):
                 .unsafe_mut_cast[False]()
                 .unsafe_origin_cast[ImmutUntrackedOrigin](),
                 header.ptr(),
-                _cstr(region_c),
+                _cstr_ptr(region_c),
             )
         )
 

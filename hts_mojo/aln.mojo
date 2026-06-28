@@ -9,16 +9,14 @@ from hts_mojo._engine import (
     CIGAR_SEQUENCE_MATCH,
     CIGAR_SEQUENCE_MISMATCH,
     CIGAR_SOFT_CLIP,
+    CigarOp,
     CigarElement,
     Header,
-    HeaderView,
     IndexedReader,
     ReadOptions,
     Reader,
     Record,
-    RecordView,
     Region,
     WriteOptions,
     Writer,
 )
-
