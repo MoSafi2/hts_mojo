@@ -35,7 +35,9 @@ struct Region(Copyable, Movable):
         return Self(contig, start0, end0)
 
     @staticmethod
-    def one_based_closed(contig: String, start1: Int64, end1: Int64) raises -> Self:
+    def one_based_closed(
+        contig: String, start1: Int64, end1: Int64
+    ) raises -> Self:
         if start1 <= 0:
             raise Error("1-based region start must be positive")
         if end1 < start1:
@@ -47,18 +49,6 @@ struct Region(Copyable, Movable):
 struct CigarElement(Copyable, Movable):
     var op: CigarOp
     var length: UInt32
-
-
-comptime CIGAR_MATCH = CigarOp.Match
-comptime CIGAR_INSERTION = CigarOp.Insertion
-comptime CIGAR_DELETION = CigarOp.Deletion
-comptime CIGAR_REFERENCE_SKIP = CigarOp.ReferenceSkip
-comptime CIGAR_SOFT_CLIP = CigarOp.SoftClip
-comptime CIGAR_HARD_CLIP = CigarOp.HardClip
-comptime CIGAR_PADDING = CigarOp.Padding
-comptime CIGAR_SEQUENCE_MATCH = CigarOp.SequenceMatch
-comptime CIGAR_SEQUENCE_MISMATCH = CigarOp.SequenceMismatch
-comptime CIGAR_BACK = CigarOp.Back
 
 
 def _cstring_to_string(
