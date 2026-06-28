@@ -11,7 +11,7 @@ mkdir -p "$(dirname "$OUT_PATH")" "$(dirname "$LAYOUT_PATH")"
 tmp_out="$(mktemp "${OUT_PATH}.XXXXXX")"
 trap 'rm -f "$tmp_out"' EXIT
 
-pixi run mojo-bindgen scripts/wrapper.h -I . --layout-tests "$LAYOUT_PATH" -o "$tmp_out"
+pixi run mojo-bindgen scripts/wrapper.h -I $CONDA_PREFIX/include/htslib --layout-tests "$LAYOUT_PATH" -o "$tmp_out"
 
 perl -0pi -e 's/\ndef abort\(\) abi\("C"\) -> None:\n    external_call\["abort", NoneType\]\(\)\n/\n/s' "$tmp_out"
 

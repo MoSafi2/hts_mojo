@@ -845,8 +845,6 @@ comptime BCF_SR_TARGETS_OVERLAP = bcf_sr_opt_t(c_uint(4))
 
 comptime bcf_sr_error = c_uint
 
-comptime bcf_sr_ok = bcf_sr_error(c_uint(0))
-
 comptime open_failed = bcf_sr_error(c_uint(0))
 
 comptime not_bgzf = bcf_sr_error(c_uint(1))
@@ -868,14 +866,6 @@ comptime vcf_parse_error = bcf_sr_error(c_uint(8))
 comptime bcf_read_error = bcf_sr_error(c_uint(9))
 
 comptime noidx_error = bcf_sr_error(c_uint(10))
-
-comptime bcf_sr_open_failed = bcf_sr_error(c_uint(11))
-
-comptime bcf_sr_seek_error = bcf_sr_error(c_uint(12))
-
-comptime bcf_sr_regions_error = bcf_sr_error(c_uint(13))
-
-comptime bcf_sr_samples_error = bcf_sr_error(c_uint(14))
 
 # File format to be dealing with.
 comptime fai_format_options = c_uint
@@ -3000,7 +2990,7 @@ comptime cram_option = hts_fmt_option
 
 comptime HTS_IDX_DELIM = "##idx##"
 
-comptime HTS_VERSION = c_int(102390)
+comptime HTS_VERSION = c_int(102301)
 
 comptime HTS_FEATURE_CONFIGURE = c_int(1)
 
@@ -3366,7 +3356,7 @@ comptime bcf_gt_missing = c_int(0)
 # define bcf_itr_queryi ( idx , tid , beg , end ) hts_itr_query ( ( idx ) , ( tid ) , ( beg ) , ( end ) , bcf_readrec )
 
 # macro bcf_itr_querys: function-like macros are preserved but not parsed
-# define bcf_itr_querys ( idx , hdr , s ) bcf_itr_querys1 ( ( idx ) , ( hdr ) , ( s ) )
+# define bcf_itr_querys ( idx , hdr , s ) hts_itr_querys ( ( idx ) , ( s ) , ( hts_name2id_f ) ( bcf_hdr_name2id ) , ( hdr ) , hts_itr_query , bcf_readrec )
 
 # macro bcf_index_load: function-like macros are preserved but not parsed
 # define bcf_index_load ( fn ) hts_idx_load ( fn , HTS_FMT_CSI )
@@ -3633,10 +3623,10 @@ comptime TBX_UCSC = c_int(65536)
 # define tbx_itr_queryi ( tbx , tid , beg , end ) hts_itr_query ( ( tbx ) -> idx , ( tid ) , ( beg ) , ( end ) , tbx_readrec )
 
 # macro tbx_itr_querys: function-like macros are preserved but not parsed
-# define tbx_itr_querys ( tbx , s ) tbx_itr_querys1 ( ( tbx ) , ( s ) )
+# define tbx_itr_querys ( tbx , s ) hts_itr_querys ( ( tbx ) -> idx , ( s ) , ( hts_name2id_f ) ( tbx_name2id ) , ( tbx ) , hts_itr_query , tbx_readrec )
 
 # macro tbx_itr_next: function-like macros are preserved but not parsed
-# define tbx_itr_next ( htsfp , tbx , itr , r ) tbx_itr_next1 ( ( htsfp ) , ( tbx ) , ( itr ) , ( r ) )
+# define tbx_itr_next ( htsfp , tbx , itr , r ) hts_itr_next ( hts_get_bgzfp ( htsfp ) , ( itr ) , ( r ) , ( tbx ) )
 
 # macro tbx_bgzf_itr_next: function-like macros are preserved but not parsed
 # define tbx_bgzf_itr_next ( bgzfp , tbx , itr , r ) hts_itr_next ( ( bgzfp ) , ( itr ) , ( r ) , ( tbx ) )
@@ -3690,8 +3680,6 @@ comptime BCF_SR_PAIR_BOTH_REF = c_int(51)
 
 # macro bcf_sr_get_reader: function-like macros are preserved but not parsed
 # define bcf_sr_get_reader ( _readers , i ) & ( ( _readers ) -> readers [ i ] )
-
-comptime HTS_SIZE_LIMIT = c_long(9223372036854775807)
 
 # macro KBS_ELTBITS: macro expression references a non-emitted or later macro constant '__CHAR_BIT__'
 # define KBS_ELTBITS ( CHAR_BIT * sizeof ( unsigned long ) )
@@ -5396,9 +5384,6 @@ def wcstoimax(__nptr: Optional[UnsafePointer[__gwchar_t, ImmutUntrackedOrigin]],
 def wcstoumax(__nptr: Optional[UnsafePointer[__gwchar_t, ImmutUntrackedOrigin]], __endptr: Optional[UnsafePointer[Optional[UnsafePointer[__gwchar_t, MutUntrackedOrigin]], MutUntrackedOrigin]], __base: c_int) abi("C") -> uintmax_t:
     return external_call["wcstoumax", uintmax_t, Optional[UnsafePointer[__gwchar_t, ImmutUntrackedOrigin]], Optional[UnsafePointer[Optional[UnsafePointer[__gwchar_t, MutUntrackedOrigin]], MutUntrackedOrigin]], c_int](__nptr, __endptr, __base)
 
-def hts_prefetch(p: Optional[MutOpaquePointer[MutUntrackedOrigin]]) abi("C") -> None:
-    external_call["hts_prefetch", NoneType, Optional[MutOpaquePointer[MutUntrackedOrigin]]](p)
-
 def hts_set_log_level(level: htsLogLevel) abi("C") -> None:
     """
     Sets the selected log level.
@@ -6218,9 +6203,6 @@ def kstrtok(str: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], sep: Opt
 
 def kgetline(s: Optional[UnsafePointer[kstring_t, MutUntrackedOrigin]], fgets_fn: kgetline_fgets_fn_cb, fp: Optional[MutOpaquePointer[MutUntrackedOrigin]]) abi("C") -> c_int:
     return external_call["kgetline", c_int, Optional[UnsafePointer[kstring_t, MutUntrackedOrigin]], kgetline_fgets_fn_cb, Optional[MutOpaquePointer[MutUntrackedOrigin]]](s, fgets_fn, fp)
-
-def kfgetline(s: Optional[UnsafePointer[kstring_t, MutUntrackedOrigin]], fp: Optional[UnsafePointer[FILE, MutUntrackedOrigin]]) abi("C") -> c_int:
-    return external_call["kfgetline", c_int, Optional[UnsafePointer[kstring_t, MutUntrackedOrigin]], Optional[UnsafePointer[FILE, MutUntrackedOrigin]]](s, fp)
 
 def kgetline2(s: Optional[UnsafePointer[kstring_t, MutUntrackedOrigin]], fgets_fn: kgetline2_fgets_fn_cb, fp: Optional[MutOpaquePointer[MutUntrackedOrigin]]) abi("C") -> c_int:
     return external_call["kgetline2", c_int, Optional[UnsafePointer[kstring_t, MutUntrackedOrigin]], kgetline2_fgets_fn_cb, Optional[MutOpaquePointer[MutUntrackedOrigin]]](s, fgets_fn, fp)
@@ -8351,38 +8333,6 @@ def bcf_enc_vfloat(s: Optional[UnsafePointer[kstring_t, MutUntrackedOrigin]], n:
     """
     return external_call["bcf_enc_vfloat", c_int, Optional[UnsafePointer[kstring_t, MutUntrackedOrigin]], c_int, Optional[UnsafePointer[c_float, MutUntrackedOrigin]]](s, n, a)
 
-def bcf_itr_querys1(idx: Optional[UnsafePointer[hts_idx_t, ImmutUntrackedOrigin]], hdr: Optional[UnsafePointer[bcf_hdr_t, MutUntrackedOrigin]], region: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]) abi("C") -> Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]]:
-    return external_call["bcf_itr_querys1", Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], Optional[UnsafePointer[hts_idx_t, ImmutUntrackedOrigin]], Optional[UnsafePointer[bcf_hdr_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]](idx, hdr, region)
-
-def bcf_itr_regarray(idx: Optional[UnsafePointer[hts_idx_t, ImmutUntrackedOrigin]], hdr: Optional[UnsafePointer[bcf_hdr_t, MutUntrackedOrigin]], regarray: Optional[UnsafePointer[Optional[UnsafePointer[c_char, MutUntrackedOrigin]], MutUntrackedOrigin]], regcount: c_uint) abi("C") -> Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]]:
-    """
-    Create a multi-region iterator
-    /** @param idx       Index
-        @param hdr       Header
-        @param regarray  Array of ref:interval region specifiers
-        @param regcount  Number of items in regarray
-    
-    Each @p regarray entry is parsed by hts_parse_reg(), and takes one of the
-    following forms:
-    
-    region          | Outputs
-    --------------- | -------------
-    REF             | All reads with RNAME REF
-    REF:            | All reads with RNAME REF
-    REF:START       | Reads with RNAME REF overlapping START to end of REF
-    REF:-END        | Reads with RNAME REF overlapping start of REF to END
-    REF:START-END   | Reads with RNAME REF overlapping START to END
-    .               | All reads from the start of the file
-    *               | Unmapped reads at the end of the file (RNAME '*' in SAM)
-    
-    The form `REF:` should be used when the reference name itself contains a colon.
-    
-    The iterator will return all reads overlapping the given regions.  If a read
-    overlaps more than one region, it will only be returned once.
-     */
-    """
-    return external_call["bcf_itr_regarray", Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], Optional[UnsafePointer[hts_idx_t, ImmutUntrackedOrigin]], Optional[UnsafePointer[bcf_hdr_t, MutUntrackedOrigin]], Optional[UnsafePointer[Optional[UnsafePointer[c_char, MutUntrackedOrigin]], MutUntrackedOrigin]], c_uint](idx, hdr, regarray, regcount)
-
 def bcf_itr_next(htsfp: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], itr: Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], r: Optional[MutOpaquePointer[MutUntrackedOrigin]]) abi("C") -> c_int:
     return external_call["bcf_itr_next", c_int, Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], Optional[MutOpaquePointer[MutUntrackedOrigin]]](htsfp, itr, r)
 
@@ -10472,21 +10422,6 @@ def hgets(buffer: Optional[UnsafePointer[c_char, MutUntrackedOrigin]], size: c_i
     """
     return external_call["hgets", Optional[UnsafePointer[c_char, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, MutUntrackedOrigin]], c_int, Optional[UnsafePointer[hFILE, MutUntrackedOrigin]]](buffer, size, fp)
 
-def khgetline(kstr: Optional[UnsafePointer[kstring_t, MutUntrackedOrigin]], fp: Optional[UnsafePointer[hFILE, MutUntrackedOrigin]]) abi("C") -> c_int:
-    """
-    Read a line from a stream and append it to a kstring
-    /** @param kstr    The destination kstring
-        @param fp      The file stream
-        @return  0 on success; EOF on end of file or if an error occurred.
-        @since   1.24
-    
-    Reads a "\\n"- or "\\r\\n"- terminated line from fp into kstr.
-    The line read is appended without its terminator and 0 is returned;
-    EOF is returned at end of file or on error.
-    */
-    """
-    return external_call["khgetline", c_int, Optional[UnsafePointer[kstring_t, MutUntrackedOrigin]], Optional[UnsafePointer[hFILE, MutUntrackedOrigin]]](kstr, fp)
-
 def hpeek(fp: Optional[UnsafePointer[hFILE, MutUntrackedOrigin]], buffer: Optional[MutOpaquePointer[MutUntrackedOrigin]], nbytes: size_t) abi("C") -> ssize_t:
     """
     Peek at characters to be read without removing them from buffers
@@ -11499,15 +11434,6 @@ def bcf_gt_type(fmt_ptr: Optional[UnsafePointer[bcf_fmt_t, MutUntrackedOrigin]],
 def bcf_acgt2int(c: c_char) abi("C") -> c_int:
     return external_call["bcf_acgt2int", c_int, c_char](c)
 
-def tbx_itr_querys1(tbx: Optional[UnsafePointer[tbx_t, MutUntrackedOrigin]], region: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]) abi("C") -> Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]]:
-    return external_call["tbx_itr_querys1", Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], Optional[UnsafePointer[tbx_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]](tbx, region)
-
-def tbx_itr_regarray(tbx: Optional[UnsafePointer[tbx_t, MutUntrackedOrigin]], regarray: Optional[UnsafePointer[Optional[UnsafePointer[c_char, MutUntrackedOrigin]], MutUntrackedOrigin]], regcount: c_uint) abi("C") -> Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]]:
-    return external_call["tbx_itr_regarray", Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], Optional[UnsafePointer[tbx_t, MutUntrackedOrigin]], Optional[UnsafePointer[Optional[UnsafePointer[c_char, MutUntrackedOrigin]], MutUntrackedOrigin]], c_uint](tbx, regarray, regcount)
-
-def tbx_itr_next1(htsfp: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], tbx: Optional[UnsafePointer[tbx_t, MutUntrackedOrigin]], iter: Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], r: Optional[MutOpaquePointer[MutUntrackedOrigin]]) abi("C") -> c_int:
-    return external_call["tbx_itr_next1", c_int, Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], Optional[UnsafePointer[tbx_t, MutUntrackedOrigin]], Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], Optional[MutOpaquePointer[MutUntrackedOrigin]]](htsfp, tbx, iter, r)
-
 def tbx_name2id(tbx: Optional[UnsafePointer[tbx_t, MutUntrackedOrigin]], ss: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]) abi("C") -> c_int:
     return external_call["tbx_name2id", c_int, Optional[UnsafePointer[tbx_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]](tbx, ss)
 
@@ -11590,7 +11516,7 @@ def tbx_destroy(tbx: Optional[UnsafePointer[tbx_t, MutUntrackedOrigin]]) abi("C"
 def bcf_sr_init() abi("C") -> Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]]:
     """
     Allocate and initialize a bcf_srs_t struct.
-    @return Pointer to a bcf_srs_t struct on success; NULL on failure.
+    
     The bcf_srs_t struct returned by a successful call should be freed
     via bcf_sr_destroy() when it is no longer needed.
     """
@@ -11603,28 +11529,17 @@ def bcf_sr_destroy(readers: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin
     external_call["bcf_sr_destroy", NoneType, Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]]](readers)
 
 def bcf_sr_strerror(errnum: c_int) abi("C") -> Optional[UnsafePointer[c_char, MutUntrackedOrigin]]:
-    """
-    Return a string describing a synced reader error
-    @param errnum  Error code (see enum bcf_sr_error)
-    @return a char pointer to the error string
-    @note The string returned should be treated as const.  The caller should
-          not try to edit or free it.
-    """
     return external_call["bcf_sr_strerror", Optional[UnsafePointer[c_char, MutUntrackedOrigin]], c_int](errnum)
 
-# Set an option in the synced reader
-# @param readers  Synced reader struct
-# @param opt      Option to set
-# @return 0 on success, 1 if the option was not recognised
 # variadic C function - not callable from thin FFI:
 # c_int bcf_sr_set_opt(readers: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], opt: bcf_sr_opt_t, ...)
 
 def bcf_sr_set_threads(files: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], n_threads: c_int) abi("C") -> c_int:
     """
-    Allocate a thread-pool for use by the synced reader.
-    @param n_threads size of thread pool
+    bcf_sr_set_threads() - allocates a thread-pool for use by the synced reader.
+    @n_threads: size of thread pool
     
-    @return 0 if the call succeeded, or <0 on error.
+    Returns 0 if the call succeeded, or <0 on error.
     """
     return external_call["bcf_sr_set_threads", c_int, Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], c_int](files, n_threads)
 
@@ -11636,11 +11551,11 @@ def bcf_sr_destroy_threads(files: Optional[UnsafePointer[bcf_srs_t, MutUntracked
 
 def bcf_sr_add_reader(readers: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], fname: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]) abi("C") -> c_int:
     """
-    Open new reader
-    @param readers holder of the open readers
-    @param fname   the VCF file
+    bcf_sr_add_reader() - open new reader
+    @readers: holder of the open readers
+    @fname:   the VCF file
     
-    @return 1 if the call succeeded, or 0 on error.
+    Returns 1 if the call succeeded, or 0 on error.
     
     See also the bcf_srs_t data structure for parameters controlling
     the reader's logic.
@@ -11650,26 +11565,19 @@ def bcf_sr_add_reader(readers: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOri
 
 def bcf_sr_add_hreader(readers: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], file_ptr: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], autoclose: c_int, idxname: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]) abi("C") -> c_int:
     """
-    Open new reader using htsfile
-    @param readers  holder of the open readers
-    @param file_ptr htsfile already opened
-    @param autoclose close file along with reader or not, 1 - close, 0 - do not close
-    @param idxname index file name for file in @file_ptr
+    bcf_sr_add_hreader() - open new reader using htsfile
+    @readers: holder of the open readers
+    @file_ptr: htsfile already opened
+    @autoclose: close file along with reader or not, 1 - close, 0 - do not close
+    @idxname: index file name for file in @file_ptr
     
-    @return 1 if the call succeeded, or 0 on error.
+    Returns 1 if the call succeeded, or 0 on error.
     
     See also the bcf_srs_t data structure for parameters controlling
     the reader's logic.
     If idxname is NULL, uses file_ptr->fn to find index file.
     With idxname as NULL, index file must be present along with the file with
     default name
-    
-    If the call succeeds, and @p autoclose is 1, ownership of @p file_ptr
-    passes to @p readers, and the file will be closed automatically when either
-    the reader is removed by bcf_sr_remove_reader(), or when all readers
-    are closed by bcf_sr_destroy().  If this function fails, ownership of
-    the file remains with the caller and the caller is responsible for cleaning
-    it up.
     """
     return external_call["bcf_sr_add_hreader", c_int, Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], c_int, Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]](readers, file_ptr, autoclose, idxname)
 
@@ -11678,65 +11586,54 @@ def bcf_sr_remove_reader(files: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOr
 
 def bcf_sr_next_line(readers: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]]) abi("C") -> c_int:
     """
-    Synced reader iterator
-    @param  readers    holder of the open readers
-    @return Number of readers with current line on success
-            0 when finished, or on error
+    bcf_sr_next_line() - the iterator
+    @readers:    holder of the open readers
     
     Returns the number of readers which have the current line
     (bcf_sr_t.buffer[0]) set at this position. Use the bcf_sr_has_line macro to
     determine which of the readers are set.
-    
-    A return value of 0 indicates either that the iterator finished, or
-    there was an error.  Callers must check @p readers->errnum to tell
-    these states apart.
     """
     return external_call["bcf_sr_next_line", c_int, Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]]](readers)
 
 def bcf_sr_seek(readers: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], seq: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], pos: hts_pos_t) abi("C") -> c_int:
     """
-    Set all readers to selected position
-    @param seq  sequence name; NULL to seek to start
-    @param pos  0-based coordinate
-    @return Number of readers with iterators over the new sequence on success
-            0 on failure
-    
-    @note Callers must check @p readers->errnum to detect failures
+    bcf_sr_seek() - set all readers to selected position
+    @seq:  sequence name; NULL to seek to start
+    @pos:  0-based coordinate
     """
     return external_call["bcf_sr_seek", c_int, Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], hts_pos_t](readers, seq, pos)
 
 def bcf_sr_set_samples(readers: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], samples: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], is_file: c_int) abi("C") -> c_int:
     """
-    Set active samples
-    @param readers holder of the open readers
-    @param samples this can be one of: file name with one sample per line;
-                   or column-separated list of samples; or '-' for a list of
-                   samples shared by all files. If first character is the
-                   exclamation mark, all but the listed samples are included.
-    @param is_file 0: list of samples; 1: file with sample names
+    bcf_sr_set_samples() - sets active samples
+    @readers: holder of the open readers
+    @samples: this can be one of: file name with one sample per line;
+              or column-separated list of samples; or '-' for a list of
+              samples shared by all files. If first character is the
+              exclamation mark, all but the listed samples are included.
+    @is_file: 0: list of samples; 1: file with sample names
     
-    @return 1 if the call succeeded, or 0 on error.
+    Returns 1 if the call succeeded, or 0 on error.
     """
     return external_call["bcf_sr_set_samples", c_int, Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], c_int](readers, samples, is_file)
 
 def bcf_sr_set_targets(readers: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], targets: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], is_file: c_int, alleles: c_int) abi("C") -> c_int:
     """
-    Set targets filter
-    @param readers   holder of the open readers
-    @param targets   list of regions, one-based and inclusive.
-    @param is_fname  0: targets is a comma-separated list of regions (chr,chr:from-to)
-                     1: targets is a tabix indexed file with a list of regions
-                        (<chr,pos> or <chr,from,to>)
-    @param alleles   One-based index of column listing alleles (see below)
-    @return 0 if the call succeeded, or -1 on error.
+    bcf_sr_set_targets(), bcf_sr_set_regions() - init targets/regions
+    @readers:   holder of the open readers
+    @targets:   list of regions, one-based and inclusive.
+    @is_fname:  0: targets is a comma-separated list of regions (chr,chr:from-to)
+                1: targets is a tabix indexed file with a list of regions
+                (<chr,pos> or <chr,from,to>)
     
-    Both bcf_sr_set_targets() and bcf_sr_set_regions() behave the same way,
-    unlisted positions will be skipped by bcf_sr_next_line().
-    However, there is an important difference: regions uses an
+    Returns 0 if the call succeeded, or -1 on error.
+    
+    Both functions behave the same way, unlisted positions will be skipped by
+    bcf_sr_next_line(). However, there is an important difference: regions use
     index to jump to desired positions while targets streams the whole files
     and merely skip unlisted positions.
     
-    Moreover, bcf_sr_set_targets() accepts an optional parameter @p alleles which
+    Moreover, bcf_sr_set_targets() accepts an optional parameter $alleles which
     is interpreted as a 1-based column index in the tab-delimited file where
     alleles are listed. This in principle enables to perform the COLLAPSE_*
     logic also with tab-delimited files. However, the current implementation
@@ -11755,55 +11652,9 @@ def bcf_sr_set_targets(readers: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOr
     return external_call["bcf_sr_set_targets", c_int, Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], c_int, c_int](readers, targets, is_file, alleles)
 
 def bcf_sr_set_regions(readers: Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], regions: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], is_file: c_int) abi("C") -> c_int:
-    """
-    Set region list
-    @param readers   holder of the open readers
-    @param targets   list of regions, one-based and inclusive.
-    @param is_fname  0: targets is a comma-separated list of regions (chr,chr:from-to)
-                     1: targets is a tabix indexed file with a list of regions
-                        (<chr,pos> or <chr,from,to>)
-    @return 0 if the call succeeded, or -1 on error.
-    
-    Both bcf_sr_set_targets() and bcf_sr_set_regions() behave the same way,
-    unlisted positions will be skipped by bcf_sr_next_line().
-    However, there is an important difference: regions uses an
-    index to jump to desired positions while targets streams the whole files
-    and merely skip unlisted positions.
-    
-    API notes:
-    - calling bcf_sr_set_regions AFTER readers have been initialized will
-      reposition the readers and discard all previous regions.
-    """
     return external_call["bcf_sr_set_regions", c_int, Optional[UnsafePointer[bcf_srs_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], c_int](readers, regions, is_file)
 
 def bcf_sr_regions_init(regions: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], is_file: c_int, chr: c_int, from_: c_int, to: c_int) abi("C") -> Optional[UnsafePointer[bcf_sr_regions_t, MutUntrackedOrigin]]:
-    """
-    Create a regions list
-    @param regions regions can be either a comma-separated list of regions
-                   (chr|chr:pos|chr:from-to|chr:from-) or VCF, BED, or
-                   tab-delimited file (the default). Uncompressed files
-                   are stored in memory while bgzip-compressed and tabix-indexed
-                   region files are streamed.
-    @param is_file 0: regions is a comma-separated list of regions
-                      (chr|chr:pos|chr:from-to|chr:from-)
-                   1: VCF, BED or tab-delimited file
-    @param chr     Column index of chromosome
-    @param from    Column index of start position (1-based, inclusive)
-    @param to      Column index of end position (1-based, inclusive)
-    @return Pointer to a populated bcf_sr_regions_t struct on success
-            NULL on failure
-    
-    The bcf_sr_regions_t struct returned by a successful call should be freed
-    via bcf_sr_regions_destroy() when it is no longer needed.
-    
-    These @p chr, @p from and @p tp  parameters are ignored when reading
-    from VCF, BED or tabix-indexed files. When end position column is not
-    present, supply 'from' in place of 'to'. When 'to' is negative, first
-    abs(to) will be attempted and if that fails, 'from' will be used instead.
-    
-    If chromosome name contains the characters ':' or '-', it should
-    be put in curly brackets, for example as "{weird-chr-name:1-2}:1000-2000"
-    """
     return external_call["bcf_sr_regions_init", Optional[UnsafePointer[bcf_sr_regions_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], c_int, c_int, c_int, c_int](regions, is_file, chr, from_, to)
 
 def bcf_sr_regions_destroy(regions: Optional[UnsafePointer[bcf_sr_regions_t, MutUntrackedOrigin]]) abi("C") -> None:
@@ -11813,287 +11664,13 @@ def bcf_sr_regions_seek(regions: Optional[UnsafePointer[bcf_sr_regions_t, MutUnt
     return external_call["bcf_sr_regions_seek", c_int, Optional[UnsafePointer[bcf_sr_regions_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]](regions, chr)
 
 def bcf_sr_regions_next(reg: Optional[UnsafePointer[bcf_sr_regions_t, MutUntrackedOrigin]]) abi("C") -> c_int:
-    """
-    Retrieve next region.
-    @return  0 on success
-            -1 when all regions have been read
-            -2 on failure
-    
-    The fields reg->seq, reg->start and reg->end are filled with the
-    genomic coordinates on success or with NULL,-1,-1 when no region is
-    available. The coordinates are 0-based, inclusive.
-    """
     return external_call["bcf_sr_regions_next", c_int, Optional[UnsafePointer[bcf_sr_regions_t, MutUntrackedOrigin]]](reg)
 
 def bcf_sr_regions_overlap(reg: Optional[UnsafePointer[bcf_sr_regions_t, MutUntrackedOrigin]], seq: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], start: hts_pos_t, end: hts_pos_t) abi("C") -> c_int:
-    """
-    Check if interval seq:start-end overlaps any regions
-    @param reg   Regions list
-    @param seq   Reference name
-    @param start Start of interval in seq (0-based, inclusive)
-    @param end   End of interval in seq (0-based, inclusive)
-    @return  0 if the position is in regions
-            -1 if the position is not in the regions and more regions exist
-            -2 if not in the regions and there are no more regions left
-            -3 on failure
-    
-    Checks if the interval <start,end> overlaps any of
-    the regions, the coordinates are 0-based, inclusive. The coordinate queries
-    must come in ascending order.
-    """
     return external_call["bcf_sr_regions_overlap", c_int, Optional[UnsafePointer[bcf_sr_regions_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], hts_pos_t, hts_pos_t](reg, seq, start, end)
 
 def bcf_sr_regions_flush(regs: Optional[UnsafePointer[bcf_sr_regions_t, MutUntrackedOrigin]]) abi("C") -> c_int:
     return external_call["bcf_sr_regions_flush", c_int, Optional[UnsafePointer[bcf_sr_regions_t, MutUntrackedOrigin]]](regs)
-
-def hts_add_sat2(a: size_t, b: size_t) abi("C") -> size_t:
-    """
-    Compute saturating addition of two size_t inputs
-    
-    @return sum of @p a and @p b, or SIZE_MAX if the sum would overflow
-    """
-    return external_call["hts_add_sat2", size_t, size_t, size_t](a, b)
-
-def hts_add_sat3(a: size_t, b: size_t, c: size_t) abi("C") -> size_t:
-    """
-    Compute saturating addition of three size_t inputs
-    
-    @return sum of @p a, @p b and @p c, or SIZE_MAX if the sum would overflow
-    """
-    return external_call["hts_add_sat3", size_t, size_t, size_t, size_t](a, b, c)
-
-def hts_prod_sat2(a: size_t, b: size_t) abi("C") -> size_t:
-    """
-    Compute saturating product of two size_t inputs
-    
-    @return product of @p a, and @p b, or SIZE_MAX if the sum would overflow
-    """
-    return external_call["hts_prod_sat2", size_t, size_t, size_t](a, b)
-
-def hts_malloc(size: size_t) abi("C") -> Optional[MutOpaquePointer[MutUntrackedOrigin]]:
-    """
-    Allocate memory with checks for overflow
-    
-    @param size Number of bytes to allocate
-    
-    @return Pointer to the allocated memory, or NULL on error
-    
-    The total allocated will be @p size bytes.  NULL will be returned
-    if the product is too big for a size_t or ptrdiff_t, or if the memory
-    could not be allocated.
-    
-    @note Using this function helps avoid -Walloc-size-larger-than warnings
-    from gcc, which doesn't like attempts to malloc more than PTRDIFF_MAX.
-    """
-    return external_call["hts_malloc", Optional[MutOpaquePointer[MutUntrackedOrigin]], size_t](size)
-
-def hts_malloc_p(a: size_t, b: size_t) abi("C") -> Optional[MutOpaquePointer[MutUntrackedOrigin]]:
-    """
-    Allocate memory with checks for overflow, product of sizes
-    
-    @param a First term of product
-    @param b Secord term of product
-    
-    @return Pointer to the allocated memory, or NULL on error
-    
-    The total allocated will be @p a * @p b bytes.  NULL will be returned
-    if the product is too big for a size_t or ptrdiff_t, or if the memory
-    could not be allocated.
-    
-    This function is a safer replacement for the idiom
-    @code{c}
-     ptr = malloc(number * sizeof(*ptr));
-    @endcode
-    as it will detect cases where the product could overflow.
-    """
-    return external_call["hts_malloc_p", Optional[MutOpaquePointer[MutUntrackedOrigin]], size_t, size_t](a, b)
-
-def hts_malloc_ps(sz: size_t, a: size_t, b: size_t) abi("C") -> Optional[MutOpaquePointer[MutUntrackedOrigin]]:
-    """
-    Allocate memory with checks for overflow, product of sum of sizes
-    
-    @param sz Size of item
-    @param a  First term of sum
-    @param b  Secord term of sum
-    
-    @return Pointer to the allocated memory, or NULL on error
-    
-    The total allocated will be @p sz * (@p a + @p b) bytes.  NULL will be
-    returned if the product is too big for a size_t or ptrdiff_t, or if the
-    memory could not be allocated.
-    
-    This function is a safer replacement for the idiom
-    @code{c}
-     ptr = malloc((a + b) * sizeof(*ptr));
-    @endcode
-    as it will detect cases where the sum and/or product could overflow.
-    """
-    return external_call["hts_malloc_ps", Optional[MutOpaquePointer[MutUntrackedOrigin]], size_t, size_t, size_t](sz, a, b)
-
-def hts_malloc_pse(sz: size_t, a: size_t, b: size_t, extra: size_t) abi("C") -> Optional[MutOpaquePointer[MutUntrackedOrigin]]:
-    """
-    Allocate memory with checks for overflow, product of sum of sizes plus extra bytes
-    
-    @param sz     Element size
-    @param a      First term of sum
-    @param b      Second term of sum
-    @param extra  Extra space to allocate, in bytes
-    
-    @return Pointer to the allocated memory, or NULL on error
-    
-    The total allocated will be (@p a + @p b) * @p sz + @p extra bytes.
-    NULL will be returned if the total is too big for a size_t or
-    ptrdiff_t, or if the memory could not be allocated.
-    
-    This function is a safer replacement for the idiom
-    @code{c}
-     ptr = malloc((a + b) * sizeof(*ptr) + extra);
-    @endcode
-    as it will detect cases where the sums and/or product could overflow.
-    """
-    return external_call["hts_malloc_pse", Optional[MutOpaquePointer[MutUntrackedOrigin]], size_t, size_t, size_t, size_t](sz, a, b, extra)
-
-def hts_calloc(sz: size_t, num: size_t) abi("C") -> Optional[MutOpaquePointer[MutUntrackedOrigin]]:
-    """
-    Allocate and clear memory with checks for overflow
-    
-    @param sz  Size in bytes of each element
-    @param num Number of elements
-    
-    @return Pointer to the allocated memory, or NULL on error
-    
-    The total allocated will be @p size bytes.  NULL will be returned
-    if the product is too big for a size_t or ptrdiff_t, or if the memory
-    could not be allocated.
-    
-    @note Using this function helps avoid -Walloc-size-larger-than warnings
-    from gcc, which doesn't like attempts to malloc more than PTRDIFF_MAX.
-    
-    @note In this function the size parameter is listed first to match
-    the other hts_alloc interfaces, which is the opposite way round to calloc().
-    In practice this makes no difference as the values get multiplied together.
-    """
-    return external_call["hts_calloc", Optional[MutOpaquePointer[MutUntrackedOrigin]], size_t, size_t](sz, num)
-
-def hts_calloc_ps(sz: size_t, a: size_t, b: size_t) abi("C") -> Optional[MutOpaquePointer[MutUntrackedOrigin]]:
-    """
-    Allocate and clear memory with checks for overflow, product of sum of sizes
-    
-    @param sz     Element size
-    @param a      First term of sum
-    @param b      Second term of sum
-    
-    @return Pointer to the allocated memory, or NULL on error
-    
-    The total allocated will be (@p a + @p b) * @p sz + @p extra bytes.
-    NULL will be returned if the total is too big for a size_t or
-    ptrdiff_t, or if the memory could not be allocated.
-    
-    This function is a safer replacement for the idiom
-    @code{c}
-     ptr = calloc(a + b, sizeof(*ptr));
-    @endcode
-    as it will detect cases where the sum could overflow.
-    """
-    return external_call["hts_calloc_ps", Optional[MutOpaquePointer[MutUntrackedOrigin]], size_t, size_t, size_t](sz, a, b)
-
-def hts_calloc_pse(sz: size_t, a: size_t, b: size_t, extra: size_t) abi("C") -> Optional[MutOpaquePointer[MutUntrackedOrigin]]:
-    """
-    Allocate and clear memory with checks for overflow
-    
-    @param sz     Element size
-    @param a      First term of sum
-    @param b      Second term of sum
-    @param extra  Extra space to allocate, in bytes
-    
-    @return Pointer to the allocated memory, or NULL on error
-    
-    The total allocated will be (@p a + @p b) * @p sz + @p extra bytes.
-    NULL will be returned if the total is too big for a size_t or
-    ptrdiff_t, or if the memory could not be allocated.
-    
-    This function is a safer replacement for the idiom
-    @code{c}
-     ptr = calloc((a + b) * sizeof(*ptr) + extra, 1);
-    @endcode
-    as it will detect cases where the sums and/or product could overflow.
-    """
-    return external_call["hts_calloc_pse", Optional[MutOpaquePointer[MutUntrackedOrigin]], size_t, size_t, size_t, size_t](sz, a, b, extra)
-
-def hts_realloc(orig: Optional[MutOpaquePointer[MutUntrackedOrigin]], size: size_t) abi("C") -> Optional[MutOpaquePointer[MutUntrackedOrigin]]:
-    """
-    Rellocate memory with checks for overflow
-    
-    @return Pointer to the allocated memory, or NULL on error
-    """
-    return external_call["hts_realloc", Optional[MutOpaquePointer[MutUntrackedOrigin]], Optional[MutOpaquePointer[MutUntrackedOrigin]], size_t](orig, size)
-
-def hts_realloc_p(orig: Optional[MutOpaquePointer[MutUntrackedOrigin]], a: size_t, b: size_t) abi("C") -> Optional[MutOpaquePointer[MutUntrackedOrigin]]:
-    """
-    Rellocate memory with checks for overflow
-    
-    @param sz Size of item
-    @param a  First term of sum
-    @param b  Secord term of sum
-    
-    @return Pointer to the allocated memory, or NULL on error
-    
-    The total allocated will be @p sz * (@p a + @p b) bytes.  NULL will be
-    returned if the product is too big for a size_t or ptrdiff_t, or if the
-    memory could not be allocated.
-    
-    This function is a safer replacement for the idiom
-    @code{c}
-     ptr = realloc(orig, (a + b) * sizeof(*ptr));
-    @endcode
-    as it will detect cases where the sum and/or product could overflow.
-    """
-    return external_call["hts_realloc_p", Optional[MutOpaquePointer[MutUntrackedOrigin]], Optional[MutOpaquePointer[MutUntrackedOrigin]], size_t, size_t](orig, a, b)
-
-def hts_realloc_ps(orig: Optional[MutOpaquePointer[MutUntrackedOrigin]], sz: size_t, a: size_t, b: size_t) abi("C") -> Optional[MutOpaquePointer[MutUntrackedOrigin]]:
-    """
-    Rellocate memory with checks for overflow
-    
-    @param sz     Element size
-    @param a      First term of sum
-    @param b      Second term of sum
-    
-    @return Pointer to the allocated memory, or NULL on error
-    
-    The total allocated will be (@p a + @p b) * @p sz bytes.
-    NULL will be returned if the total is too big for a size_t or
-    ptrdiff_t, or if the memory could not be allocated.
-    
-    This function is a safer replacement for the idiom
-    @code{c}
-     ptr = realloc(orig, (a + b) * sizeof(*ptr));
-    @endcode
-    as it will detect cases where the sum and/or product could overflow.
-    """
-    return external_call["hts_realloc_ps", Optional[MutOpaquePointer[MutUntrackedOrigin]], Optional[MutOpaquePointer[MutUntrackedOrigin]], size_t, size_t, size_t](orig, sz, a, b)
-
-def hts_realloc_pse(orig: Optional[MutOpaquePointer[MutUntrackedOrigin]], sz: size_t, a: size_t, b: size_t, extra: size_t) abi("C") -> Optional[MutOpaquePointer[MutUntrackedOrigin]]:
-    """
-    Rellocate memory with checks for overflow
-    
-    @param sz     Element size
-    @param a      First term of sum
-    @param b      Second term of sum
-    @param extra  Extra space to allocate, in bytes
-    
-    @return Pointer to the allocated memory, or NULL on error
-    
-    The total allocated will be (@p a + @p b) * @p sz + @p extra bytes.
-    NULL will be returned if the total is too big for a size_t or
-    ptrdiff_t, or if the memory could not be allocated.
-    
-    This function is a safer replacement for the idiom
-    @code{c}
-     ptr = realloc(orig, (a + b) * sizeof(*ptr) + extra);
-    @endcode
-    as it will detect cases where the sums and/or product could overflow.
-    """
-    return external_call["hts_realloc_pse", Optional[MutOpaquePointer[MutUntrackedOrigin]], Optional[MutOpaquePointer[MutUntrackedOrigin]], size_t, size_t, size_t, size_t](orig, sz, a, b, extra)
 
 def kbs_last_mask(ni: size_t) abi("C") -> c_ulong:
     return external_call["kbs_last_mask", c_ulong, size_t](ni)
@@ -12195,7 +11772,7 @@ def fai_load(fn_: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]) abi("C"
     /** @param  fn  File name of the FASTA file
         @return Pointer to a faidx_t struct on success, NULL on failure.
     
-    This function is equivalent to fai_load3(fn, NULL, NULL, FAI_CREATE);
+    This function is equivalent to fai_load3(fn, NULL, NULL, FAI_CREATE|FAI_CACHE);
     */
     """
     return external_call["fai_load", Optional[UnsafePointer[faidx_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]](fn_)
@@ -12230,7 +11807,7 @@ def fai_load_format(fn_: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], 
         @param  format FASTA or FASTQ file format
         @return Pointer to a faidx_t struct on success, NULL on failure.
     
-    This function is equivalent to fai_load3_format(fn, NULL, NULL, FAI_CREATE, format);
+    This function is equivalent to fai_load3_format(fn, NULL, NULL, FAI_CREATE|FAI_CACHE, format);
     */
     """
     return external_call["fai_load_format", Optional[UnsafePointer[faidx_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], fai_format_options](fn_, format)
