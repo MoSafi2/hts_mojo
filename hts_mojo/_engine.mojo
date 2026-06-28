@@ -51,6 +51,18 @@ struct CigarElement(Copyable, Movable):
     var length: UInt32
 
 
+comptime CIGAR_MATCH = CigarOp.Match
+comptime CIGAR_INSERTION = CigarOp.Insertion
+comptime CIGAR_DELETION = CigarOp.Deletion
+comptime CIGAR_REFERENCE_SKIP = CigarOp.ReferenceSkip
+comptime CIGAR_SOFT_CLIP = CigarOp.SoftClip
+comptime CIGAR_HARD_CLIP = CigarOp.HardClip
+comptime CIGAR_PADDING = CigarOp.Padding
+comptime CIGAR_SEQUENCE_MATCH = CigarOp.SequenceMatch
+comptime CIGAR_SEQUENCE_MISMATCH = CigarOp.SequenceMismatch
+comptime CIGAR_BACK = CigarOp.Back
+
+
 def _cstring_to_string(
     ptr: UnsafePointer[c_char, ImmutUntrackedOrigin]
 ) -> String:
@@ -161,7 +173,10 @@ struct Record(Movable):
         return Int32(self._raw.l_seq())
 
     def query_name(self) raises -> String:
-        return _cstring_to_string(self._raw.borrowed_qname_ptr())
+        var ptr = self._raw.borrowed_qname_ptr()
+        if not ptr:
+            raise Error("record has no query name")
+        return _cstring_to_string(ptr.value())
 
     def cigar(self) raises -> List[CigarElement]:
         var result = List[CigarElement]()

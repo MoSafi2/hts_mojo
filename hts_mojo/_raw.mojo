@@ -120,6 +120,18 @@ def _check_nonnegative(code: Int, context: String) raises -> Int:
     return code
 
 
+def _check_i32(value: Int, context: String) raises -> Int32:
+    if value < -2147483648 or value > 2147483647:
+        raise Error(context)
+    return Int32(value)
+
+
+def _check_nonnegative_i32(value: Int, context: String) raises -> Int32:
+    if value < 0:
+        raise Error(context)
+    return _check_i32(value, context)
+
+
 def _check_ptr[
     T: Movable & Copyable
 ](value: Optional[T], context: String) raises -> T:
@@ -142,7 +154,12 @@ struct RawAlignmentFile(Movable):
         if self._ptr:
             _ = hts_close(self._ptr.value())
 
-    def ptr(self) -> UnsafePointer[htsFile, MutUntrackedOrigin]:
+    def ptr(self) raises -> UnsafePointer[htsFile, MutUntrackedOrigin]:
+        if not self._ptr:
+            raise Error("alignment file is closed")
+        return self._ptr.value()
+
+    def unsafe_ptr_unchecked(self) -> UnsafePointer[htsFile, MutUntrackedOrigin]:
         return self._ptr.value()
 
     def close(mut self) raises:
@@ -153,8 +170,11 @@ struct RawAlignmentFile(Movable):
             self._ptr = None
 
     def set_threads(mut self, n_threads: Int) raises:
+        var n_threads_i32 = _check_nonnegative_i32(
+            n_threads, "thread count out of range"
+        )
         _check_zero(
-            Int(hts_set_threads(self.ptr(), Int32(n_threads))),
+            Int(hts_set_threads(self.ptr(), n_threads_i32)),
             "failed to set alignment threads",
         )
 
@@ -185,7 +205,7 @@ struct RawAlignmentFile(Movable):
 
     def read1_status(
         mut self, header: RawSamHeader, mut record: RawBamRecord
-    ) -> Int:
+    ) raises -> Int:
         return Int(sam_read1(self.ptr(), header.ptr(), record.ptr()))
 
     def write1(mut self, header: RawSamHeader, record: RawBamRecord) raises:
@@ -238,7 +258,14 @@ struct RawSamHeader(Movable):
         if self._ptr:
             sam_hdr_destroy(self._ptr.value())
 
-    def ptr(self) -> UnsafePointer[sam_hdr_t, MutUntrackedOrigin]:
+    def ptr(self) raises -> UnsafePointer[sam_hdr_t, MutUntrackedOrigin]:
+        if not self._ptr:
+            raise Error("alignment header is unavailable")
+        return self._ptr.value()
+
+    def unsafe_ptr_unchecked(
+        self,
+    ) -> UnsafePointer[sam_hdr_t, MutUntrackedOrigin]:
         return self._ptr.value()
 
     def dup(self) raises -> Self:
@@ -251,17 +278,17 @@ struct RawSamHeader(Movable):
         )
 
     def text_length(self) -> Int:
-        return Int(sam_hdr_length(self.ptr()))
+        return Int(sam_hdr_length(self.unsafe_ptr_unchecked()))
 
     def borrowed_text_ptr(
         self,
     ) -> Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]:
-        return sam_hdr_str(self.ptr())
+        return sam_hdr_str(self.unsafe_ptr_unchecked())
 
     def n_ref(self) -> Int:
         return Int(
             sam_hdr_nref(
-                self.ptr()
+                self.unsafe_ptr_unchecked()
                 .unsafe_mut_cast[False]()
                 .unsafe_origin_cast[ImmutUntrackedOrigin]()
             )
@@ -275,7 +302,7 @@ struct RawSamHeader(Movable):
         self, tid: Int32
     ) -> Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]:
         return sam_hdr_tid2name(
-            self.ptr()
+            self.unsafe_ptr_unchecked()
             .unsafe_mut_cast[False]()
             .unsafe_origin_cast[ImmutUntrackedOrigin](),
             tid,
@@ -284,7 +311,7 @@ struct RawSamHeader(Movable):
     def tid2len(self, tid: Int32) -> Int64:
         return Int64(
             sam_hdr_tid2len(
-                self.ptr()
+                self.unsafe_ptr_unchecked()
                 .unsafe_mut_cast[False]()
                 .unsafe_origin_cast[ImmutUntrackedOrigin](),
                 tid,
@@ -322,7 +349,12 @@ struct RawBamRecord(Movable):
         if self._ptr:
             bam_destroy1(self._ptr.value())
 
-    def ptr(self) -> UnsafePointer[bam1_t, MutUntrackedOrigin]:
+    def ptr(self) raises -> UnsafePointer[bam1_t, MutUntrackedOrigin]:
+        if not self._ptr:
+            raise Error("alignment record is unavailable")
+        return self._ptr.value()
+
+    def unsafe_ptr_unchecked(self) -> UnsafePointer[bam1_t, MutUntrackedOrigin]:
         return self._ptr.value()
 
     def dup(self) raises -> Self:
@@ -445,47 +477,53 @@ struct RawBamRecord(Movable):
         )
 
     def raw_core_ptr(self) -> UnsafePointer[bam1_core_t, MutUntrackedOrigin]:
-        return UnsafePointer(to=self.ptr()[].core).unsafe_origin_cast[
+        return UnsafePointer(
+            to=self.unsafe_ptr_unchecked()[].core
+        ).unsafe_origin_cast[
             MutUntrackedOrigin
         ]()
 
     def tid(self) -> Int32:
-        return self.ptr()[].core.tid
+        return self.unsafe_ptr_unchecked()[].core.tid
 
     def pos0(self) -> Int64:
-        return self.ptr()[].core.pos
+        return self.unsafe_ptr_unchecked()[].core.pos
 
     def end_pos0(self) -> Int64:
         return Int64(
             bam_endpos(
-                self.ptr()
+                self.unsafe_ptr_unchecked()
                 .unsafe_mut_cast[False]()
                 .unsafe_origin_cast[ImmutUntrackedOrigin]()
             )
         )
 
     def flag(self) -> UInt16:
-        return self.ptr()[].core.flag
+        return self.unsafe_ptr_unchecked()[].core.flag
 
     def mapq(self) -> UInt8:
-        return self.ptr()[].core.qual
+        return self.unsafe_ptr_unchecked()[].core.qual
 
     def mate_tid(self) -> Int32:
-        return self.ptr()[].core.mtid
+        return self.unsafe_ptr_unchecked()[].core.mtid
 
     def mate_pos0(self) -> Int64:
-        return self.ptr()[].core.mpos
+        return self.unsafe_ptr_unchecked()[].core.mpos
 
     def insert_size(self) -> Int64:
-        return self.ptr()[].core.isize
+        return self.unsafe_ptr_unchecked()[].core.isize
 
     def l_seq(self) -> Int:
-        return Int(self.ptr()[].core.l_qseq)
+        return Int(self.unsafe_ptr_unchecked()[].core.l_qseq)
 
     def n_cigar(self) -> Int:
-        return Int(self.ptr()[].core.n_cigar)
+        return Int(self.unsafe_ptr_unchecked()[].core.n_cigar)
 
-    def borrowed_qname_ptr(self) -> UnsafePointer[c_char, ImmutUntrackedOrigin]:
+    def borrowed_qname_ptr(
+        self,
+    ) -> Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]:
+        if not self._data_ptr():
+            return None
         return (
             self._data_ptr()
             .value()
@@ -554,13 +592,13 @@ struct RawBamRecord(Movable):
         return result^
 
     def _data_ptr(self) -> Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]:
-        return self.ptr()[].data
+        return self.unsafe_ptr_unchecked()[].data
 
     def _data_len(self) -> Int:
-        return Int(self.ptr()[].l_data)
+        return Int(self.unsafe_ptr_unchecked()[].l_data)
 
     def _qname_bytes(self) -> Int:
-        return Int(self.ptr()[].core.l_qname)
+        return Int(self.unsafe_ptr_unchecked()[].core.l_qname)
 
     def _cigar_bytes(self) -> Int:
         return self.n_cigar() * 4
@@ -624,12 +662,13 @@ struct RawHtsIndex(Movable):
     ) raises -> Self:
         var path_c = path
         var index_path_c = index_path
+        var flags_i32 = _check_i32(flags, "index load flags out of range")
         return Self._adopt(
             sam_index_load3(
                 file.ptr(),
                 _cstr_ptr(path_c),
                 _cstr_ptr(index_path_c),
-                Int32(flags),
+                flags_i32,
             ),
             "failed to load alignment index",
         )
@@ -642,6 +681,12 @@ struct RawHtsIndex(Movable):
         threads: Int = 0,
     ) raises:
         var path_c = path
+        var min_shift_i32 = _check_nonnegative_i32(
+            min_shift, "min_shift out of range"
+        )
+        var threads_i32 = _check_nonnegative_i32(
+            threads, "thread count out of range"
+        )
         if index_path:
             var index_path_c = index_path.value()
             _check_zero(
@@ -649,8 +694,8 @@ struct RawHtsIndex(Movable):
                     sam_index_build3(
                         _cstr_ptr(path_c),
                         _cstr_ptr(index_path_c),
-                        Int32(min_shift),
-                        Int32(threads),
+                        min_shift_i32,
+                        threads_i32,
                     )
                 ),
                 "failed to build alignment index",
@@ -660,7 +705,7 @@ struct RawHtsIndex(Movable):
         _check_zero(
             Int(
                 sam_index_build3(
-                    _cstr_ptr(path_c), None, Int32(min_shift), Int32(threads)
+                    _cstr_ptr(path_c), None, min_shift_i32, threads_i32
                 )
             ),
             "failed to build alignment index",
@@ -670,7 +715,12 @@ struct RawHtsIndex(Movable):
         if self._ptr:
             hts_idx_destroy(self._ptr.value())
 
-    def ptr(self) -> UnsafePointer[hts_idx_t, MutUntrackedOrigin]:
+    def ptr(self) raises -> UnsafePointer[hts_idx_t, MutUntrackedOrigin]:
+        if not self._ptr:
+            raise Error("alignment index is unavailable")
+        return self._ptr.value()
+
+    def unsafe_ptr_unchecked(self) -> UnsafePointer[hts_idx_t, MutUntrackedOrigin]:
         return self._ptr.value()
 
     @staticmethod
@@ -696,6 +746,12 @@ struct RawHtsIterator(Movable):
     def queryi(
         index: RawHtsIndex, tid: Int32, beg0: Int64, end0: Int64
     ) raises -> Self:
+        if tid < -1:
+            raise Error("reference id out of range")
+        if beg0 < 0:
+            raise Error("region start must be non-negative")
+        if end0 < beg0:
+            raise Error("region end must be >= start")
         return Self._adopt(
             sam_itr_queryi(
                 index.ptr()
@@ -726,12 +782,17 @@ struct RawHtsIterator(Movable):
         if self._ptr:
             hts_itr_destroy(self._ptr.value())
 
-    def ptr(self) -> UnsafePointer[hts_itr_t, MutUntrackedOrigin]:
+    def ptr(self) raises -> UnsafePointer[hts_itr_t, MutUntrackedOrigin]:
+        if not self._ptr:
+            raise Error("alignment iterator is unavailable")
+        return self._ptr.value()
+
+    def unsafe_ptr_unchecked(self) -> UnsafePointer[hts_itr_t, MutUntrackedOrigin]:
         return self._ptr.value()
 
     def next_status(
         mut self, mut file: RawAlignmentFile, mut record: RawBamRecord
-    ) -> Int:
+    ) raises -> Int:
         return Int(hts_mojo_sam_itr_next(file.ptr(), self.ptr(), record.ptr()))
 
     @staticmethod
