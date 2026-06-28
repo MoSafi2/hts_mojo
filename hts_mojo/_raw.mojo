@@ -61,6 +61,15 @@ def _terminated(s: String) -> String:
     return result^
 
 
+def _check_sam_text_ascii(value: String, context: String) raises:
+    for cp in value.codepoint_slices():
+        var ch = String(cp)
+        if ch == "\0":
+            raise Error(context)
+        if ch.byte_length() != 1:
+            raise Error(context)
+
+
 def _cstr_ptr(var s: String) raises -> UnsafePointer[c_char, ImmutUntrackedOrigin]:
     _ensure_nul(s)
     return (
@@ -435,25 +444,58 @@ struct RawBamRecord(Movable):
         qual: String,
         l_aux: UInt = 0,
     ) raises:
-        if seq.byte_length() != qual.byte_length():
+        _check_sam_text_ascii(
+            qname, "query name must be ASCII SAM text without NUL bytes"
+        )
+        _check_sam_text_ascii(
+            seq, "sequence must be ASCII SAM text without NUL bytes"
+        )
+
+        var missing_qual = qual == String("*")
+        if not missing_qual:
+            _check_sam_text_ascii(
+                qual, "quality string must be ASCII SAM text without NUL bytes"
+            )
+
+        if not missing_qual and seq.byte_length() != qual.byte_length():
             raise Error(
                 "sequence and quality strings must have the same length"
             )
 
         var seq_len = Int(seq.byte_length())
         var seq_c = seq
-        var qual_c = qual
-        var qual_bytes = _bytes_with_nul_ptr(qual_c)
         var encoded_qual = _OwnedByteBuffer(seq_len)
+        if seq_len > 0 and not encoded_qual.ptr():
+            raise Error("failed to allocate temporary quality buffer")
 
-        for i in range(seq_len):
-            var phred_ascii = qual_bytes[i]
-            if phred_ascii < UInt8(33):
-                raise Error("quality string must use SAM ASCII with +33 offset")
-            encoded_qual.ptr().value()[i] = phred_ascii - UInt8(33)
+        if seq_len > 0:
+            if missing_qual:
+                for i in range(seq_len):
+                    encoded_qual.ptr().value()[i] = UInt8(0xFF)
+            else:
+                var qual_c = qual
+                var qual_bytes = _bytes_with_nul_ptr(qual_c)
+                for i in range(seq_len):
+                    var phred_ascii = qual_bytes[i]
+                    if phred_ascii < UInt8(33):
+                        raise Error(
+                            "quality string must use SAM ASCII with +33 offset"
+                        )
+                    encoded_qual.ptr().value()[i] = phred_ascii - UInt8(33)
 
         var qname_c = qname
         _ensure_nul(qname_c)
+        var qual_ptr = UnsafePointer[c_char, ImmutUntrackedOrigin](
+            unsafe_from_address=0
+        )
+        if seq_len > 0:
+            qual_ptr = (
+                encoded_qual.ptr()
+                .value()
+                .unsafe_mut_cast[False]()
+                .unsafe_origin_cast[ImmutUntrackedOrigin]()
+                .bitcast[c_char]()
+            )
         self.set1(
             UInt(qname_c.byte_length()),
             _cstr_ptr(qname_c),
@@ -468,11 +510,7 @@ struct RawBamRecord(Movable):
             isize,
             UInt(seq_len),
             _cstr_ptr(seq_c),
-            encoded_qual.ptr()
-            .value()
-            .unsafe_mut_cast[False]()
-            .unsafe_origin_cast[ImmutUntrackedOrigin]()
-            .bitcast[c_char](),
+            qual_ptr,
             l_aux,
         )
 
