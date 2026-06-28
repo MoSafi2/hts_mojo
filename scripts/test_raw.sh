@@ -10,6 +10,7 @@ cd "$ROOT_DIR"
 : "${CONDA_PREFIX:?pixi environment is required}"
 
 cc -shared -fPIC -I. -Iscripts \
+    -I"$CONDA_PREFIX/include/htslib" \
     scripts/wrapper.c \
     -L"$CONDA_PREFIX/lib" -lhts \
     -o "$BUILD_DIR/libwrapper.so"

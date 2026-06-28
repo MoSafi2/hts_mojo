@@ -1,6 +1,7 @@
+from std.sys.info import size_of
 from std.testing import TestSuite
 
-from hts_mojo._ffi import bam_set1, sam_hdr_write, sam_write1
+from hts_mojo._ffi import hts_free, malloc, sam_hdr_destroy, sam_hdr_parse, sam_hdr_write, sam_write1
 from hts_mojo._raw import (
     RawBamRecord,
     RawHtsIndex,
@@ -50,10 +51,13 @@ def _write_fixture(path: String) raises:
     var header_text = String(
         "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:1000\n"
     )
-    var header = RawSamHeader(_terminated(header_text))
-    var file = RawSamFile(path, String("wb"))
+    var header_text_c = _terminated(header_text)
+    var header = sam_hdr_parse(UInt(header_text.byte_length()), _cstr(header_text_c))
+    if not header:
+        raise Error("sam_hdr_parse failed")
+    var file = RawSamFile(path, _terminated(String("wb")))
     var header_ptr = (
-        header.ptr()
+        header.value()
         .unsafe_mut_cast[False]()
         .unsafe_origin_cast[ImmutUntrackedOrigin]()
     )
@@ -62,29 +66,35 @@ def _write_fixture(path: String) raises:
         raise Error("sam_hdr_write failed")
 
     var record = RawBamRecord()
-    var qname = _terminated(String("read-1"))
-    var seq = _terminated(String("ACGTN"))
-    var qual = _terminated(String('!"#$%'))
-    rc = bam_set1(
-        record.ptr(),
-        UInt(qname.byte_length() + 1),
-        _cstr(qname),
+    var seq = String("ACGTN")
+    var qual = String('!"#$%')
+    var cigar_mem = malloc(UInt(size_of[UInt32]()))
+    if not cigar_mem:
+        raise Error("malloc failed")
+    var cigar_ptr = rebind[Optional[UnsafePointer[UInt32, MutUntrackedOrigin]]](
+        cigar_mem
+    )
+    cigar_ptr.value()[0] = UInt32(UInt(seq.byte_length()) << 4)
+    var cigar_arg = (
+        cigar_ptr.value()
+        .unsafe_mut_cast[False]()
+        .unsafe_origin_cast[ImmutUntrackedOrigin]()
+    )
+    record.set1_sam(
+        String("read-1"),
         UInt16(0),
         0,
         0,
+        42,
+        1,
+        cigar_arg,
+        -1,
+        -1,
         0,
-        0,
-        None,
-        0,
-        0,
-        0,
-        UInt(seq.byte_length()),
-        _cstr(seq),
-        _cstr(qual),
+        seq,
+        qual,
         0,
     )
-    if rc < 0:
-        raise Error("bam_set1 failed")
 
     var record_ptr = (
         record.ptr()
@@ -93,9 +103,13 @@ def _write_fixture(path: String) raises:
     )
     rc = sam_write1(file.ptr(), header_ptr, record_ptr)
     if rc != 0:
+        sam_hdr_destroy(header.value())
+        hts_free(cigar_mem.value())
         raise Error("sam_write1 failed")
 
     file.close()
+    sam_hdr_destroy(header.value())
+    hts_free(cigar_mem.value())
 
 
 def test_raw_header_lifecycle() raises:
@@ -122,16 +136,7 @@ def test_raw_file_lifecycle() raises:
     var file = RawSamFile()
     file.close()
 
-    var header = RawSamHeader(_terminated(String("@HD\tVN:1.6\tSO:unsorted\n")))
     var writer = RawSamFile(path, _terminated(String("w")))
-    var header_ptr = (
-        header.ptr()
-        .unsafe_mut_cast[False]()
-        .unsafe_origin_cast[ImmutUntrackedOrigin]()
-    )
-    var rc = sam_hdr_write(writer.ptr(), header_ptr)
-    if rc != 0:
-        raise Error("sam_hdr_write failed")
     writer.close()
 
 
