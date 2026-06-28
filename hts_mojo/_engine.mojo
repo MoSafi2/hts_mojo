@@ -9,9 +9,6 @@ from hts_mojo._ffi import (
     bam_auxB2f,
     bam_auxB2i,
     bam_auxB_len,
-    bam_aux_first,
-    bam_aux_next,
-    hts_mojo_bam_aux_tag,
 )
 
 comptime _HEX_DIGITS = "0123456789abcdef"
@@ -975,9 +972,12 @@ struct Record(Movable, Writable):
         if not qual:
             return String("*")
 
-        var result = String()
+        var result = String("[")
         for i in range(self._raw.l_seq()):
-            result += String(chr(Int(qual.value()[i] + UInt8(33))))
+            if i > 0:
+                result += ","
+            result += String(qual.value()[i])
+        result += "]"
         return result^
 
     def _raw_bytes(self) -> List[UInt8]:
@@ -991,28 +991,68 @@ struct Record(Movable, Writable):
 
     def _aux_summary(self) -> String:
         var result = String("[")
-        var record_ptr = (
-            self._raw.unsafe_ptr_unchecked()
-            .unsafe_mut_cast[False]()
-            .unsafe_origin_cast[ImmutUntrackedOrigin]()
-        )
-        var aux = bam_aux_first(record_ptr)
+        var aux = self._raw.borrowed_aux_ptr()
+        if not aux:
+            return String("[]")
+
+        var limit = self._raw.aux_len()
+        var i = 0
         var first = True
-        while aux:
-            var aux_read = aux.value().unsafe_mut_cast[False]().unsafe_origin_cast[
-                ImmutUntrackedOrigin
-            ]()
+        while i + 2 < limit:
             if not first:
                 result += ", "
             first = False
-            var tag = hts_mojo_bam_aux_tag(aux_read)
-            if tag:
-                result += _cstring_to_string(tag.value())
-            else:
-                result += String("??")
+
+            var tag = String(chr(Int(aux.value()[i])))
+            tag += String(chr(Int(aux.value()[i + 1])))
+            var aux_field = aux.value() + (i + 2)
+            var aux_type = String(chr(Int(aux_field[0])))
+            var display_type = aux_type
+            if (
+                aux_type == "c"
+                or aux_type == "C"
+                or aux_type == "s"
+                or aux_type == "S"
+                or aux_type == "i"
+                or aux_type == "I"
+            ):
+                display_type = String("i")
+            result += tag
             result += "="
-            result += _aux_value_to_string(aux_read)
-            aux = bam_aux_next(record_ptr, aux_read)
+            result += display_type
+            result += ":"
+            result += _aux_value_to_string(aux_field)
+
+            if aux_type == "Z" or aux_type == "H":
+                var j = 1
+                while aux_field[j] != 0:
+                    j += 1
+                i += 2 + 1 + j + 1
+                continue
+            if aux_type == "B":
+                var subtype = String(chr(Int(aux_field[1])))
+                var count = Int(
+                    UInt32(aux_field[2])
+                    | (UInt32(aux_field[3]) << 8)
+                    | (UInt32(aux_field[4]) << 16)
+                    | (UInt32(aux_field[5]) << 24)
+                )
+                var element_size = 1
+                if subtype == "s" or subtype == "S":
+                    element_size = 2
+                elif subtype == "i" or subtype == "I" or subtype == "f":
+                    element_size = 4
+                i += 2 + 1 + 1 + 4 + (count * element_size)
+                continue
+
+            if aux_type == "c" or aux_type == "C" or aux_type == "A":
+                i += 2 + 1 + 1
+            elif aux_type == "s" or aux_type == "S":
+                i += 2 + 1 + 2
+            elif aux_type == "i" or aux_type == "I" or aux_type == "f":
+                i += 2 + 1 + 4
+            else:
+                break
         result += "]"
         return result^
 

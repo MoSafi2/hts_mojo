@@ -3,3 +3,4 @@
 !.pixi/config.toml
 *.bam
 read_first_bam
+build/libwrapper.so

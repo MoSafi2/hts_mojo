@@ -238,22 +238,24 @@ def test_record_accessors_and_aux() raises:
         raise Error("AS aux kind mismatch")
     if not record.get_aux(String("RG")) or record.get_aux(String("RG")).value().string_value != "rg1":
         raise Error("RG aux string mismatch")
+    var rendered = String.write(record)
+    if (
+        rendered.find("qname=read-1") == -1
+        or rendered.find("flag=0x0043") == -1
+        or rendered.find("aux=[NM=i:1") == -1
+        or rendered.find("AS=f:2.5") == -1
+        or rendered.find("RG=Z:rg1") == -1
+        or rendered.find("qual=[") == -1
+        or rendered.find("cigar=5M") == -1
+        or rendered.find("seq=ACGTN") == -1
+    ):
+        raise Error("Record should render key fields")
     if not record.remove_aux(String("NM")) or record.has_aux(String("NM")):
         raise Error("remove_aux should delete NM")
 
     var cloned = record.clone()
     if cloned.query_name() != "read-1":
         raise Error("clone should preserve record content")
-    var rendered = String.write(record)
-    if (
-        rendered.find("qname=read-1") == -1
-        or rendered.find("flag=0x") == -1
-        or rendered.find("aux=0x") == -1
-        or rendered.find("raw=0x") == -1
-        or rendered.find("cigar=5M") == -1
-        or rendered.find("seq=ACGTN") == -1
-    ):
-        raise Error("Record should render key fields")
 
 
 def test_writer_and_reader_roundtrip() raises:
