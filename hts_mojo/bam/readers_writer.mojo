@@ -19,32 +19,8 @@ from hts_mojo.bam._common import (
 )
 
 from hts_mojo._ffi import (
-    bam1_core_t,
-    bam1_t,
-    bam_aux2A,
-    bam_aux2f,
-    bam_aux2i,
-    bam_aux2Z,
-    bam_auxB2f,
-    bam_auxB2i,
-    bam_auxB_len,
-    hts_mojo_bam_aux_del_by_tag,
-    hts_mojo_bam_aux_get,
-    hts_mojo_bam_aux_update_float,
-    hts_mojo_bam_aux_update_int,
-    hts_mojo_bam_aux_update_str,
-    bam_copy1,
-    bam_destroy1,
-    bam_dup1,
-    bam_endpos,
-    bam_init1,
-    bam_set1,
-    c_float,
     htsFile,
     hts_close,
-    hts_free,
-    hts_idx_destroy,
-    hts_idx_t,
     hts_itr_destroy,
     hts_itr_t,
     hts_mojo_sam_itr_next,
@@ -77,7 +53,6 @@ from hts_mojo._ffi import (
     uint32_t,
 )
 
-comptime BamReader = Reader
 
 
 def _writer_mode(path: String, options: WriteOptions) raises -> String:

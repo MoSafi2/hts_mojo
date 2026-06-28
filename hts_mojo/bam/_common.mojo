@@ -291,3 +291,44 @@ def _raw_bytes_to_hex(bytes: List[UInt8]) -> String:
         result += String(_HEX_DIGITS[byte=Int(byte & UInt8(0xF))])
     return result
 
+
+
+
+
+def _split_tab_fields(line: String) -> List[String]:
+    var result = List[String]()
+    var current = String()
+    for cp in line.codepoint_slices():
+        var ch = String(cp)
+        if ch == "\t":
+            result.append(current^)
+            current = String()
+            continue
+        current += ch
+    result.append(current^)
+    return result^
+
+
+def _starts_with_ascii(text: String, prefix: String) -> Bool:
+    if prefix.byte_length() > text.byte_length():
+        return False
+    for i in range(prefix.byte_length()):
+        if String(text[byte=i]) != String(prefix[byte=i]):
+            return False
+    return True
+
+
+def _field_value(field: String, key: String) -> Optional[String]:
+    if key.byte_length() != 2 or field.byte_length() < 3:
+        return None
+    if (
+        String(field[byte=0]) != String(key[byte=0])
+        or String(field[byte=1]) != String(key[byte=1])
+        or String(field[byte=2]) != ":"
+    ):
+        return None
+    var value = String()
+    for i in range(3, field.byte_length()):
+        value += String(field[byte=i])
+    return value
+
