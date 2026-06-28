@@ -32,3 +32,5 @@ void wrap_kbs_insert(kbitset_t *bs, int i);
  * <div rustbindgen replaces="kbs_destroy"></div>
  */
 void wrap_kbs_destroy(kbitset_t *bs);
+
+int hts_mojo_sam_itr_next(htsFile *fp, hts_itr_t *itr, bam1_t *b);

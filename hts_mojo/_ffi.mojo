@@ -12242,3 +12242,6 @@ def wrap_kbs_destroy(bs: Optional[UnsafePointer[kbitset_t, MutUntrackedOrigin]])
     <div rustbindgen replaces="kbs_destroy"></div>
     """
     external_call["wrap_kbs_destroy", NoneType, Optional[UnsafePointer[kbitset_t, MutUntrackedOrigin]]](bs)
+
+def hts_mojo_sam_itr_next(fp: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], itr: Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], b: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]) abi("C") -> c_int:
+    return external_call["hts_mojo_sam_itr_next", c_int, Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]](fp, itr, b)

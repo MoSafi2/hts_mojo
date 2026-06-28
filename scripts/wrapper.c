@@ -19,3 +19,8 @@ void wrap_kbs_destroy(kbitset_t *bs)
 {
     kbs_destroy(bs);
 }
+
+int hts_mojo_sam_itr_next(htsFile *fp, hts_itr_t *itr, bam1_t *b)
+{
+    return sam_itr_next(fp, itr, b);
+}
