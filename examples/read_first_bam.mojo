@@ -27,9 +27,11 @@ def main() raises:
     print("Reference id:", record.reference_id())
     print(record)
 
-    var ref_name = header.reference_name(record.reference_id())
-    if ref_name:
-        print("Reference name:", ref_name.value())
+    var ref_id = record.reference_id()
+    if ref_id:
+        var ref_name = header.reference_name(ref_id.value())
+        if ref_name:
+            print("Reference name:", ref_name.value())
 
     var ref_start = record.reference_start()
     print("Reference start:", ref_start)

@@ -172,6 +172,8 @@ def test_header_metadata_helpers() raises:
     var reparsed = Header.from_text(header.text())
     if reparsed.n_references() != 2:
         raise Error("Header.from_text should preserve references")
+    if String.write(header) != header.text():
+        raise Error("Header should render as its SAM text")
 
 
 def test_record_accessors_and_aux() raises:
@@ -242,6 +244,13 @@ def test_record_accessors_and_aux() raises:
     var cloned = record.clone()
     if cloned.query_name() != "read-1":
         raise Error("clone should preserve record content")
+    var rendered = String.write(record)
+    if (
+        rendered.find("qname=read-1") == -1
+        or rendered.find("cigar=5M") == -1
+        or rendered.find("seq=ACGTN") == -1
+    ):
+        raise Error("Record should render key fields")
 
 
 def test_writer_and_reader_roundtrip() raises:

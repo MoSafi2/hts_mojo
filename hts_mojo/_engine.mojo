@@ -1,4 +1,5 @@
 from std.ffi import c_char, CStringSlice
+from std.io import Writer as IOWriter
 from hts_mojo import _raw
 
 
@@ -371,7 +372,7 @@ def _writer_mode(
     return mode
 
 
-struct Header(Movable):
+struct Header(Movable, Writable):
     var _raw: _raw.RawSamHeader
 
     def __init__(out self) raises:
@@ -555,8 +556,11 @@ struct Header(Movable):
         line += "\n"
         self._raw.append_line(line)
 
+    def write_to[w: IOWriter](self, mut writer: w):
+        writer.write(self.text())
 
-struct Record(Movable):
+
+struct Record(Movable, Writable):
     var _raw: _raw.RawBamRecord
 
     def __init__(out self) raises:
@@ -811,6 +815,61 @@ struct Record(Movable):
 
     def is_supplementary(self) -> Bool:
         return self.flags().is_supplementary()
+
+    def write_to[w: IOWriter](self, mut writer: w):
+        writer.write(
+            "Record(qname=",
+            self._query_name_or_default(),
+            ", flag=",
+            self.flag_bits(),
+            ", tid=",
+            self.raw_reference_id(),
+            ", pos0=",
+            self.raw_reference_start(),
+            ", mapq=",
+            self.mapping_quality(),
+            ", cigar=",
+            self._cigar_string_or_default(),
+            ", seq=",
+            self._query_sequence_or_default(),
+            ")",
+        )
+
+    def _query_name_or_default(self) -> String:
+        var ptr = self._raw.borrowed_qname_ptr()
+        if not ptr:
+            return String("*")
+        return _cstring_to_string(ptr.value())
+
+    def _cigar_string_or_default(self) -> String:
+        if self._raw.n_cigar() == 0:
+            return String("*")
+        var ptr = self._raw.borrowed_cigar_ptr()
+        if not ptr:
+            return String("*")
+
+        var result = String()
+        for i in range(self._raw.n_cigar()):
+            var raw = ptr.value()[i]
+            result += String(raw >> 4)
+            result += _cigar_op_char(CigarOp(raw & UInt32(0xF)))
+        return result^
+
+    def _query_sequence_or_default(self) -> String:
+        var seq = self._raw.borrowed_seq_ptr()
+        if not seq:
+            return String("*")
+
+        var result = String()
+        for i in range(self._raw.l_seq()):
+            var byte = seq.value()[i >> 1]
+            if (i & 1) == 0:
+                result += _seq_char(byte >> 4)
+            else:
+                result += _seq_char(byte & UInt8(0xF))
+        if result.byte_length() == 0:
+            return String("*")
+        return result^
 
 
 @fieldwise_init
