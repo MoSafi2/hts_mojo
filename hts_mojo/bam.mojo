@@ -14,6 +14,7 @@ from hts_mojo.aln import (
     Header as AlignmenetFileHeader,
     IndexedReader,
     ReadOptions,
+    RecordsIter,
     Reader as BamReader,
     Record as BamRecord,
     Region,

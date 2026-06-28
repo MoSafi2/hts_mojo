@@ -14,6 +14,7 @@ from hts_mojo._engine import (
     Header,
     IndexedReader,
     ReadOptions,
+    RecordsIter,
     Reader,
     Record,
     Region,

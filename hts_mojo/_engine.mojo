@@ -280,6 +280,38 @@ struct WriteOptions(Copyable, Movable):
     var threads: Int
 
 
+struct RecordsIter(Movable):
+    var _reader: UnsafePointer[Reader, MutUntrackedOrigin]
+    var _iter: Optional[_raw.RawHtsIterator]
+
+    def __init__(
+        out self,
+        reader: UnsafePointer[Reader, MutUntrackedOrigin],
+        var iter: Optional[_raw.RawHtsIterator] = None,
+    ):
+        self._reader = reader
+        self._iter = iter^
+
+    def read_into(mut self, mut record: Record) raises -> Bool:
+        if self._iter:
+            var rc = self._iter.value().next_status(
+                self._reader[]._file, record._raw
+            )
+            if rc >= 0:
+                return True
+            if rc == -1:
+                return False
+            raise Error("failed to read indexed alignment record")
+
+        return self._reader[].read_into(record)
+
+    def next(mut self) raises -> Optional[Record]:
+        var record = Record()
+        if not self.read_into(record):
+            return None
+        return record^
+
+
 struct Reader(Movable):
     var _file: _raw.RawAlignmentFile
     var _header: _raw.RawSamHeader
@@ -325,6 +357,11 @@ struct Reader(Movable):
             return None
         return record^
 
+    def records(mut self) -> RecordsIter:
+        return RecordsIter(
+            UnsafePointer(to=self).unsafe_origin_cast[MutUntrackedOrigin]()
+        )
+
     def set_threads(mut self, n_threads: Int) raises:
         self._file.set_threads(n_threads)
 
@@ -338,7 +375,6 @@ struct Reader(Movable):
 struct IndexedReader(Movable):
     var _reader: Reader
     var _index: _raw.RawHtsIndex
-    var _iter: Optional[_raw.RawHtsIterator]
 
     @staticmethod
     def open(
@@ -363,37 +399,32 @@ struct IndexedReader(Movable):
             )
         else:
             self._index = _raw.RawHtsIndex.load(self._reader._file, path)
-        self._iter = None
 
     def header(self) raises -> Header:
         return self._reader.header()
 
-    def fetch(mut self, region: Region) raises:
-        if self._iter:
-            self._iter = None
+    def fetch(mut self, region: Region) raises -> RecordsIter:
         var tid = self.header().require_tid(region.contig)
-        self._iter = _raw.RawHtsIterator.queryi(
-            self._index, tid, region.start0, region.end0
+        return RecordsIter(
+            UnsafePointer(to=self._reader).unsafe_origin_cast[
+                MutUntrackedOrigin
+            ](),
+            _raw.RawHtsIterator.queryi(
+                self._index, tid, region.start0, region.end0
+            ),
         )
 
-    def fetch_string(mut self, region: String) raises:
-        if self._iter:
-            self._iter = None
-        self._iter = _raw.RawHtsIterator.querys(
-            self._index, self._reader._header, region
+    def fetch_string(mut self, region: String) raises -> RecordsIter:
+        return RecordsIter(
+            UnsafePointer(to=self._reader).unsafe_origin_cast[
+                MutUntrackedOrigin
+            ](),
+            _raw.RawHtsIterator.querys(
+                self._index, self._reader._header, region
+            ),
         )
 
     def read_into(mut self, mut record: Record) raises -> Bool:
-        if self._iter:
-            var rc = self._iter.value().next_status(
-                self._reader._file, record._raw
-            )
-            if rc >= 0:
-                return True
-            if rc == -1:
-                return False
-            raise Error("failed to read indexed alignment record")
-
         return self._reader.read_into(record)
 
     def next(mut self) raises -> Optional[Record]:
@@ -402,6 +433,9 @@ struct IndexedReader(Movable):
             return None
         return record^
 
+    def records(mut self) -> RecordsIter:
+        return self._reader.records()
+
     def set_threads(mut self, n_threads: Int) raises:
         self._reader.set_threads(n_threads)
 
@@ -409,7 +443,6 @@ struct IndexedReader(Movable):
         self._reader.set_reference(reference_path)
 
     def close(mut self) raises:
-        self._iter = None
         self._reader.close()
 
 
