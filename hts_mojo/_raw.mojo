@@ -70,14 +70,6 @@ def _check_not_none[
 struct RawSamFile(Movable):
     var _ptr: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]]
 
-    @staticmethod
-    def open(path: String, mode: String) raises -> Self:
-        var result = Self()
-        result._ptr = hts_open(_cstr(path), _cstr(mode))
-        if not result._ptr:
-            raise Error("failed to open alignment file")
-        return result^
-
     def __init__(out self, path: String, mode: String) raises:
         self._ptr = hts_open(_cstr(path), _cstr(mode))
         if not self._ptr:
@@ -116,6 +108,11 @@ struct RawSamFile(Movable):
 struct RawSamHeader(Movable):
     var _ptr: Optional[UnsafePointer[sam_hdr_t, MutUntrackedOrigin]]
 
+    def __init__(out self) raises:
+        self._ptr = sam_hdr_init()
+        if not self._ptr:
+            raise Error("failed to allocate alignment header")
+
     def __init__(
         out self, ptr: Optional[UnsafePointer[sam_hdr_t, MutUntrackedOrigin]]
     ):
@@ -130,13 +127,6 @@ struct RawSamHeader(Movable):
         self._ptr = sam_hdr_parse(UInt(text.byte_length()), _cstr(text))
         if not self._ptr:
             raise Error("failed to parse alignment header")
-
-    @staticmethod
-    def empty() raises -> Self:
-        var result = Self(sam_hdr_init())
-        if not result._ptr:
-            raise Error("failed to allocate alignment header")
-        return result^
 
     def __del__(deinit self):
         if self._ptr:
@@ -216,10 +206,10 @@ struct RawBamRecord(Movable):
         return self._ptr.value()
 
     def dup(self) raises -> Self:
-        return Self(copy=self)^
+        return Self(copy=self)
 
     def copy_from(mut self, read other: RawBamRecord) raises:
-        _check_not_none(
+        self._ptr = _check_not_none(
             bam_copy1(
                 self.ptr(),
                 other.ptr()
@@ -353,14 +343,27 @@ struct RawHtsIterator(Movable):
     def __init__(
         out self, index: RawHtsIndex, tid: Int32, beg: Int64, end: Int64
     ) raises:
-        self._ptr = sam_itr_queryi(index.ptr(), tid, beg, end)
+        self._ptr = sam_itr_queryi(
+            index.ptr()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutUntrackedOrigin](),
+            tid,
+            beg,
+            end,
+        )
         if not self._ptr:
             raise Error("failed to create alignment iterator")
 
     def __init__(
         out self, index: RawHtsIndex, header: RawSamHeader, region: String
     ) raises:
-        self._ptr = sam_itr_querys(index.ptr(), header.ptr(), _cstr(region))
+        self._ptr = sam_itr_querys(
+            index.ptr()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutUntrackedOrigin](),
+            header.ptr(),
+            _cstr(region),
+        )
         if not self._ptr:
             raise Error("failed to create alignment iterator")
 
