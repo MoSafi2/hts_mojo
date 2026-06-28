@@ -147,7 +147,9 @@ struct RawAlignmentFile(Movable):
 
     def close(mut self) raises:
         if self._ptr:
-            _check_zero(Int(hts_close(self._ptr.value())), "failed to close file")
+            _check_zero(
+                Int(hts_close(self._ptr.value())), "failed to close file"
+            )
             self._ptr = None
 
     def set_threads(mut self, n_threads: Int) raises:
@@ -219,10 +221,14 @@ struct RawSamHeader(Movable):
     @staticmethod
     def parse(text: String) raises -> Self:
         var text_c = text
-        return Self.adopt(sam_hdr_parse(UInt(text.byte_length()), _cstr(text_c)))
+        return Self.adopt(
+            sam_hdr_parse(UInt(text.byte_length()), _cstr(text_c))
+        )
 
     @staticmethod
-    def adopt(ptr: Optional[UnsafePointer[sam_hdr_t, MutUntrackedOrigin]]) raises -> Self:
+    def adopt(
+        ptr: Optional[UnsafePointer[sam_hdr_t, MutUntrackedOrigin]]
+    ) raises -> Self:
         var result = Self(ptr)
         if not result._ptr:
             raise Error("failed to acquire alignment header")
@@ -398,7 +404,9 @@ struct RawBamRecord(Movable):
         l_aux: UInt = 0,
     ) raises:
         if seq.byte_length() != qual.byte_length():
-            raise Error("sequence and quality strings must have the same length")
+            raise Error(
+                "sequence and quality strings must have the same length"
+            )
 
         var seq_len = Int(seq.byte_length())
         var seq_c = _terminated(seq)
@@ -477,9 +485,13 @@ struct RawBamRecord(Movable):
         return Int(self.ptr()[].core.n_cigar)
 
     def borrowed_qname_ptr(self) -> UnsafePointer[c_char, ImmutUntrackedOrigin]:
-        return self._data_ptr().value().unsafe_mut_cast[False]().unsafe_origin_cast[
-            ImmutUntrackedOrigin
-        ]().bitcast[c_char]()
+        return (
+            self._data_ptr()
+            .value()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutUntrackedOrigin]()
+            .bitcast[c_char]()
+        )
 
     def borrowed_cigar_ptr(
         self,
@@ -531,7 +543,9 @@ struct RawBamRecord(Movable):
         return qual[i]
 
     @staticmethod
-    def _adopt_copy(ptr: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]) raises -> Self:
+    def _adopt_copy(
+        ptr: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]
+    ) raises -> Self:
         var result = Self()
         if result._ptr:
             bam_destroy1(result._ptr.value())
@@ -717,7 +731,9 @@ struct RawHtsIterator(Movable):
         return Int(hts_mojo_sam_itr_next(file.ptr(), self.ptr(), record.ptr()))
 
     @staticmethod
-    def _adopt(ptr: Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]]) raises -> Self:
+    def _adopt(
+        ptr: Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]]
+    ) raises -> Self:
         var result = Self(ptr)
         if not result._ptr:
             raise Error("failed to create alignment iterator")
