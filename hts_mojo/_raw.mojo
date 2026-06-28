@@ -300,7 +300,7 @@ struct RawHtsIndex(Movable):
         flags: Int,
     ) raises:
         self._ptr = sam_index_load3(
-            file.ptr(), _cstr(path), _cstr(index_path), flags
+            file.ptr(), _cstr(path), _cstr(index_path), Int32(flags)
         )
         if not self._ptr:
             raise Error("failed to load alignment index")
@@ -325,15 +325,19 @@ struct RawHtsIndex(Movable):
                     sam_index_build3(
                         _cstr(path),
                         _cstr(index_path.value()),
-                        min_shift,
-                        threads,
+                        Int32(min_shift),
+                        Int32(threads),
                     )
                 ),
                 "failed to build alignment index",
             )
             return
         _check_code(
-            Int(sam_index_build3(_cstr(path), None, min_shift, threads)),
+            Int(
+                sam_index_build3(
+                    _cstr(path), None, Int32(min_shift), Int32(threads)
+                )
+            ),
             "failed to build alignment index",
         )
 
