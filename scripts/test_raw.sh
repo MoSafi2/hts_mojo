@@ -22,7 +22,7 @@ pixi run mojo build \
     -Xlinker -L"$CONDA_PREFIX/lib" \
     -Xlinker -lhts \
     -o "$BUILD_DIR/raw-tests" \
-    tests/raw.mojo
+    tests/test_raw.mojo
 
 LD_LIBRARY_PATH="$BUILD_DIR:$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
     "$BUILD_DIR/raw-tests"
