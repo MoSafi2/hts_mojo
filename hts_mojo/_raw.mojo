@@ -56,7 +56,16 @@ from hts_mojo._ffi import (
 #
 # This layer is meant for internal plumbing, not a high-level public API.
 
-def _cstr(s: String) raises -> UnsafePointer[c_char, ImmutUntrackedOrigin]:
+def _ensure_nul(mut s: String):
+    if s.byte_length() == 0:
+        s += "\0"
+        return
+    if String(s[byte=s.byte_length() - 1]) != "\0":
+        s += "\0"
+
+
+def _cstr(mut s: String) raises -> UnsafePointer[c_char, ImmutUntrackedOrigin]:
+    _ensure_nul(s)
     return (
         CStringSlice(s)
         .as_bytes_with_nul()
@@ -67,10 +76,13 @@ def _cstr(s: String) raises -> UnsafePointer[c_char, ImmutUntrackedOrigin]:
 
 
 def _terminated(s: String) -> String:
-    return s + "\0"
+    var result = s
+    _ensure_nul(result)
+    return result^
 
 
-def _bytes_with_nul(s: String) raises -> UnsafePointer[UInt8, ImmutUntrackedOrigin]:
+def _bytes_with_nul(mut s: String) raises -> UnsafePointer[UInt8, ImmutUntrackedOrigin]:
+    _ensure_nul(s)
     return (
         CStringSlice(s)
         .as_bytes_with_nul()
@@ -117,39 +129,50 @@ def _check_not_none[
     return value.value().copy()
 
 
-# Owns an `htsFile*`.
-# A default-constructed value is empty; `close()` is idempotent.
 struct RawSamFile(Movable):
+    """
+    RAII wrapper around an `htsFile*`.
+
+    A value created with `RawSamFile(path, mode)` owns the returned HTSlib file
+    handle and closes it on destruction. `ptr()` exposes the mutable raw pointer for other
+    low-level helpers in this module.
+    """
     var _ptr: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]]
 
     def __init__(out self, path: String, mode: String) raises:
-        self._ptr = hts_open(_cstr(path), _cstr(mode))
+        """Open an alignment file with HTSlib mode semantics such as `rb` or `wb`."""
+        var path_c = path
+        var mode_c = mode
+        self._ptr = hts_open(_cstr(path_c), _cstr(mode_c))
         if not self._ptr:
             raise Error("failed to open alignment file")
 
-    def __init__(out self):
-        self._ptr = None
-
     def __del__(deinit self):
+        """Release the owned file handle if one is present."""
         if self._ptr:
             _ = hts_close(self._ptr.value())
 
     def ptr(self) -> UnsafePointer[htsFile, MutUntrackedOrigin]:
+        """Return the owned raw file pointer. The caller must not free it."""
         return self._ptr.value()
 
     def set_threads(mut self, n_threads: Int) raises:
+        """Configure HTSlib worker threads for this file handle."""
         _check_code(
             Int(hts_set_threads(self.ptr(), Int32(n_threads))),
             "failed to set alignment threads",
         )
 
     def set_reference(mut self, reference_path: String) raises:
+        """Attach a FASTA reference path for formats and operations that require it."""
+        var reference_path_c = reference_path
         _check_code(
-            Int(hts_set_fai_filename(self.ptr(), _cstr(reference_path))),
+            Int(hts_set_fai_filename(self.ptr(), _cstr(reference_path_c))),
             "failed to set reference FASTA",
         )
 
     def close(mut self) raises:
+        """Close the owned file handle. Calling this more than once is a no-op."""
         if self._ptr:
             _check_code(
                 Int(hts_close(self._ptr.value())), "failed to close file"
@@ -157,12 +180,18 @@ struct RawSamFile(Movable):
             self._ptr = None
 
 
-# Owns a `sam_hdr_t*`.
-# The `text` constructor expects a fully NUL-terminated SAM header string.
 struct RawSamHeader(Movable):
+    """
+    RAII wrapper around a `sam_hdr_t*`.
+
+    Instances own their header pointer and destroy it automatically. This type
+    is intentionally thin and mirrors HTSlib's header-centric operations:
+    allocate, read, parse, duplicate, and query references by tid or name.
+    """
     var _ptr: Optional[UnsafePointer[sam_hdr_t, MutUntrackedOrigin]]
 
     def __init__(out self) raises:
+        """Allocate an empty mutable SAM header via `sam_hdr_init()`."""
         self._ptr = sam_hdr_init()
         if not self._ptr:
             raise Error("failed to allocate alignment header")
@@ -170,26 +199,33 @@ struct RawSamHeader(Movable):
     def __init__(
         out self, ptr: Optional[UnsafePointer[sam_hdr_t, MutUntrackedOrigin]]
     ):
+        """Adopt ownership of an existing header pointer returned by HTSlib."""
         self._ptr = ptr
 
     def __init__(out self, file: RawSamFile) raises:
+        """Read and own the header from an open alignment file."""
         self._ptr = sam_hdr_read(file.ptr())
         if not self._ptr:
             raise Error("failed to read alignment header")
 
     def __init__(out self, text: String) raises:
-        self._ptr = sam_hdr_parse(UInt(text.byte_length()), _cstr(text))
+        """Parse and own a NUL-terminated SAM header text buffer."""
+        var text_c = text
+        self._ptr = sam_hdr_parse(UInt(text.byte_length()), _cstr(text_c))
         if not self._ptr:
             raise Error("failed to parse alignment header")
 
     def __del__(deinit self):
+        """Destroy the owned header if present."""
         if self._ptr:
             sam_hdr_destroy(self._ptr.value())
 
     def ptr(self) -> UnsafePointer[sam_hdr_t, MutUntrackedOrigin]:
+        """Return the owned raw header pointer. The caller must not free it."""
         return self._ptr.value()
 
     def dup(self) raises -> Self:
+        """Return a deep duplicate that owns its own `sam_hdr_t*`."""
         var result = Self(
             sam_hdr_dup(
                 self.ptr()
@@ -202,9 +238,11 @@ struct RawSamHeader(Movable):
         return result^
 
     def text_length(self) -> Int:
+        """Return the stored header-text length as reported by HTSlib."""
         return Int(sam_hdr_length(self.ptr()))
 
     def n_ref(self) -> Int:
+        """Return the number of reference sequences recorded in the header."""
         return Int(
             sam_hdr_nref(
                 self.ptr()
@@ -214,11 +252,14 @@ struct RawSamHeader(Movable):
         )
 
     def name2tid(self, reference: String) raises -> Int32:
-        return Int32(sam_hdr_name2tid(self.ptr(), _cstr(reference)))
+        """Resolve a NUL-terminated reference name to its numeric tid, or `-1`."""
+        var reference_c = reference
+        return Int32(sam_hdr_name2tid(self.ptr(), _cstr(reference_c)))
 
     def tid2name(
         self, tid: Int32
     ) -> Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]:
+        """Return the borrowed HTSlib name pointer for `tid`, or `None` if absent."""
         return sam_hdr_tid2name(
             self.ptr()
             .unsafe_mut_cast[False]()
@@ -227,6 +268,7 @@ struct RawSamHeader(Movable):
         )
 
     def tid2len(self, tid: Int32) -> Int64:
+        """Return the declared reference length for `tid`."""
         return Int64(
             sam_hdr_tid2len(
                 self.ptr()
@@ -237,18 +279,25 @@ struct RawSamHeader(Movable):
         )
 
 
-# Owns a `bam1_t*`.
-# `set1()` is a direct pass-through to HTSlib and expects HTSlib-native payloads.
-# Use `set1_sam()` when the inputs are SAM-style strings.
 struct RawBamRecord(Movable):
+    """
+    RAII wrapper around a `bam1_t*`.
+
+    This type owns one mutable BAM record buffer. `set1()` is the strict
+    low-level population API that expects HTSlib-ready payload bytes. For test
+    setup and simple callers, `set1_sam()` accepts SAM-style sequence and
+    quality strings and normalizes the quality bytes before delegating.
+    """
     var _ptr: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]
 
     def __init__(out self) raises:
+        """Allocate an empty BAM record via `bam_init1()`."""
         self._ptr = bam_init1()
         if not self._ptr:
             raise Error("failed to allocate alignment record")
 
     def __init__(out self, *, copy: RawBamRecord):
+        """Allocate a deep copy of another owned BAM record."""
         self._ptr = bam_dup1(
             copy.ptr()
             .unsafe_mut_cast[False]()
@@ -256,16 +305,20 @@ struct RawBamRecord(Movable):
         )
 
     def __del__(deinit self):
+        """Destroy the owned BAM record if present."""
         if self._ptr:
             bam_destroy1(self._ptr.value())
 
     def ptr(self) -> UnsafePointer[bam1_t, MutUntrackedOrigin]:
+        """Return the owned raw BAM pointer. The caller must not free it."""
         return self._ptr.value()
 
     def dup(self) raises -> Self:
+        """Return a new record with duplicated underlying BAM storage."""
         return Self(copy=self)
 
     def copy_from(mut self, read other: RawBamRecord) raises:
+        """Copy another record's contents into this record's owned buffer."""
         self._ptr = _check_not_none(
             bam_copy1(
                 self.ptr(),
@@ -294,11 +347,16 @@ struct RawBamRecord(Movable):
         qual: UnsafePointer[c_char, ImmutUntrackedOrigin],
         l_aux: UInt,
     ) raises:
-        # Low-level contract:
-        # - `qname` must point at a NUL-terminated query name
-        # - `l_qname` must match the HTSlib expectation for that name
-        # - `seq` and `qual` must already be in the byte layout accepted by
-        #   `bam_set1`; this helper does not normalize them
+        """
+        Populate the record by forwarding directly to `bam_set1()`.
+
+        Callers must provide HTSlib-compatible payloads:
+        - `qname` must point to a NUL-terminated query name
+        - `l_qname` must match HTSlib's length expectation for that name
+        - `seq` and `qual` must already be encoded in the byte layout accepted
+          by `bam_set1()`
+        - this helper performs no normalization beyond error propagation
+        """
         _check_code(
             Int(
                 bam_set1(
@@ -339,11 +397,14 @@ struct RawBamRecord(Movable):
         qual: String,
         l_aux: UInt = 0,
     ) raises:
-        # Convenience adapter for common test/setup code:
-        # - `seq` is passed through as a NUL-terminated SAM sequence string
-        # - `qual` must be SAM ASCII qualities and is converted to raw Phred
-        # This keeps the byte normalization in one place instead of scattering
-        # ad hoc conversions at call sites.
+        """
+        Populate the record from SAM-style string inputs.
+
+        `seq` is passed to HTSlib as a NUL-terminated sequence string.
+        `qual` must contain SAM ASCII qualities with the `+33` offset; this
+        method validates the bytes and converts them to raw Phred scores before
+        calling `set1()`. Sequence and quality lengths must match exactly.
+        """
         if seq.byte_length() != qual.byte_length():
             raise Error("sequence and quality strings must have the same length")
 
@@ -383,25 +444,38 @@ struct RawBamRecord(Movable):
         )
 
 
-# Owns an `hts_idx_t*`.
-# The file-based constructors load an existing index; `build()` creates one on disk.
 struct RawHtsIndex(Movable):
+    """
+    RAII wrapper around an `hts_idx_t*`.
+
+    Constructors that take a file path load an existing on-disk index and own
+    the returned pointer. `build()` is a convenience entry point for index
+    creation and does not retain any in-memory index state.
+    """
     var _ptr: Optional[UnsafePointer[hts_idx_t, MutUntrackedOrigin]]
 
     def __init__(
         out self, ptr: Optional[UnsafePointer[hts_idx_t, MutUntrackedOrigin]]
     ):
+        """Adopt ownership of an existing HTSlib index pointer."""
         self._ptr = ptr
 
     def __init__(out self, file: RawSamFile, path: String) raises:
-        self._ptr = sam_index_load(file.ptr(), _cstr(path))
+        """Load the default index associated with `path` for `file`."""
+        var path_c = path
+        self._ptr = sam_index_load(file.ptr(), _cstr(path_c))
         if not self._ptr:
             raise Error("failed to load alignment index")
 
     def __init__(
         out self, file: RawSamFile, path: String, index_path: String
     ) raises:
-        self._ptr = sam_index_load2(file.ptr(), _cstr(path), _cstr(index_path))
+        """Load an index from an explicit on-disk index path."""
+        var path_c = path
+        var index_path_c = index_path
+        self._ptr = sam_index_load2(
+            file.ptr(), _cstr(path_c), _cstr(index_path_c)
+        )
         if not self._ptr:
             raise Error("failed to load alignment index")
 
@@ -412,17 +486,22 @@ struct RawHtsIndex(Movable):
         index_path: String,
         flags: Int,
     ) raises:
+        """Load an index using `sam_index_load3()` with explicit loader flags."""
+        var path_c = path
+        var index_path_c = index_path
         self._ptr = sam_index_load3(
-            file.ptr(), _cstr(path), _cstr(index_path), Int32(flags)
+            file.ptr(), _cstr(path_c), _cstr(index_path_c), Int32(flags)
         )
         if not self._ptr:
             raise Error("failed to load alignment index")
 
     def __del__(deinit self):
+        """Destroy the owned index if present."""
         if self._ptr:
             hts_idx_destroy(self._ptr.value())
 
     def ptr(self) -> UnsafePointer[hts_idx_t, MutUntrackedOrigin]:
+        """Return the owned raw index pointer. The caller must not free it."""
         return self._ptr.value()
 
     @staticmethod
@@ -432,12 +511,20 @@ struct RawHtsIndex(Movable):
         min_shift: Int = 0,
         threads: Int = 0,
     ) raises:
+        """
+        Build an index on disk for the alignment file at `path`.
+
+        When `index_path` is omitted HTSlib chooses the default index location.
+        `min_shift` and `threads` are forwarded directly to `sam_index_build3()`.
+        """
         if index_path:
+            var path_c = path
+            var index_path_c = index_path.value()
             _check_code(
                 Int(
                     sam_index_build3(
-                        _cstr(path),
-                        _cstr(index_path.value()),
+                        _cstr(path_c),
+                        _cstr(index_path_c),
                         Int32(min_shift),
                         Int32(threads),
                     )
@@ -445,30 +532,37 @@ struct RawHtsIndex(Movable):
                 "failed to build alignment index",
             )
             return
+        var path_c = path
         _check_code(
             Int(
                 sam_index_build3(
-                    _cstr(path), None, Int32(min_shift), Int32(threads)
+                    _cstr(path_c), None, Int32(min_shift), Int32(threads)
                 )
             ),
             "failed to build alignment index",
         )
 
 
-# Owns an `hts_itr_t*`.
-# `next()` mirrors HTSlib return codes: non-negative for a record, `-1` at EOF,
-# and values below `-1` for harder failures.
 struct RawHtsIterator(Movable):
+    """
+    RAII wrapper around an `hts_itr_t*`.
+
+    Iterators can be constructed either from a numeric `(tid, beg, end)` range
+    or from a parsed region string plus header. The iterator owns the HTSlib
+    iterator object and exposes `next()` with HTSlib-style status codes.
+    """
     var _ptr: Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]]
 
     def __init__(
         out self, ptr: Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]]
     ):
+        """Adopt ownership of an existing iterator pointer."""
         self._ptr = ptr
 
     def __init__(
         out self, index: RawHtsIndex, tid: Int32, beg: Int64, end: Int64
     ) raises:
+        """Create an iterator over a numeric reference interval."""
         self._ptr = sam_itr_queryi(
             index.ptr()
             .unsafe_mut_cast[False]()
@@ -483,25 +577,36 @@ struct RawHtsIterator(Movable):
     def __init__(
         out self, index: RawHtsIndex, header: RawSamHeader, region: String
     ) raises:
+        """Create an iterator from a NUL-terminated region string such as `chr1:1-100`."""
+        var region_c = region
         self._ptr = sam_itr_querys(
             index.ptr()
             .unsafe_mut_cast[False]()
             .unsafe_origin_cast[ImmutUntrackedOrigin](),
             header.ptr(),
-            _cstr(region),
+            _cstr(region_c),
         )
         if not self._ptr:
             raise Error("failed to create alignment iterator")
 
     def __del__(deinit self):
+        """Destroy the owned iterator if present."""
         if self._ptr:
             hts_itr_destroy(self._ptr.value())
 
     def ptr(self) -> UnsafePointer[hts_itr_t, MutUntrackedOrigin]:
+        """Return the owned raw iterator pointer. The caller must not free it."""
         return self._ptr.value()
 
     def next(self, file: RawSamFile, mut record: RawBamRecord) -> Int:
-        # HTSlib iterator advancement is BGZF-backed for BAM/CRAM access.
+        """
+        Advance the iterator and populate `record` in place.
+
+        Return semantics mirror HTSlib:
+        - non-negative: a record was produced
+        - `-1`: end of iterator
+        - `< -1`: lower-level read or iterator failure
+        """
         return Int(
             hts_itr_next(
                 hts_get_bgzfp(file.ptr()),

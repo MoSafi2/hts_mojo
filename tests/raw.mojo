@@ -19,7 +19,8 @@ def _terminated(text: String) -> String:
 
 
 def test_cstr_helper() raises:
-    var ptr = _cstr(_terminated(String("hi")))
+    var text = String("hi")
+    var ptr = _cstr(text)
     if ptr[0] != 104 or ptr[1] != 105 or ptr[2] != 0:
         raise Error("_cstr produced unexpected bytes")
 

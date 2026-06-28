@@ -108,7 +108,8 @@ struct HeaderView(Copyable, Movable):
         return Int64(length)
 
     def tid(self, contig: String) -> Int32:
-        return Int32(sam_hdr_name2tid(self._require_ptr(), _raw._cstr(contig)))
+        var contig_c = contig
+        return Int32(sam_hdr_name2tid(self._require_ptr(), _raw._cstr(contig_c)))
 
 
 struct Header(Movable):

@@ -21,7 +21,16 @@ def _terminated(s: String) -> String:
     return s + "\0"
 
 
-def _cstr(s: String) raises -> UnsafePointer[c_char, ImmutExternalOrigin]:
+def _ensure_nul(mut s: String):
+    if s.byte_length() == 0:
+        s += "\0"
+        return
+    if String(s[byte=s.byte_length() - 1]) != "\0":
+        s += "\0"
+
+
+def _cstr(mut s: String) raises -> UnsafePointer[c_char, ImmutExternalOrigin]:
+    _ensure_nul(s)
     return (
         CStringSlice(s)
         .as_bytes_with_nul()
