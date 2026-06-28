@@ -7,8 +7,9 @@ version = "0.1.0"
 
 [tasks]
 generate-bindings = "bash scripts/generate_bindings.sh"
-test-raw = "bash scripts/test_raw.sh"
-test-engine = "bash scripts/test_engine.sh"
+build-file = "bash scripts/build_mojo_file.sh"
+test-raw = "bash -lc 'bash scripts/build_mojo_file.sh tests/test_raw.mojo build/raw-tests && LD_LIBRARY_PATH=build:$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} ./build/raw-tests'"
+test-engine = "bash -lc 'bash scripts/build_mojo_file.sh tests/test_engine.mojo build/engine-tests && LD_LIBRARY_PATH=build:$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} ./build/engine-tests'"
 
 [dependencies]
 python = ">=3.14.6,<3.15"
