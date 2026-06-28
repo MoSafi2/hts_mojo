@@ -11,9 +11,8 @@ from hts_mojo.bam._common import (
     _cstr_ptr,
     _terminated,
 )
+from hts_mojo.bam.file import RawAlignmentFile, RawHtsIndex, RawHtsIterator
 from hts_mojo.bam.header import RawSamHeader
-from hts_mojo.bam.index import RawHtsIndex, RawHtsIterator
-from hts_mojo.bam.readers_writer import RawAlignmentFile
 from hts_mojo.bam.record import RawBamRecord
 
 
@@ -176,7 +175,7 @@ def test_raw_header_adopt_and_write_to() raises:
     var source_header = RawSamHeader()
     source_header.append_line(String("@HD\tVN:1.6\tSO:coordinate\n"))
     source_header.append_line(String("@SQ\tSN:chr2\tLN:200\n"))
-    source_header.write_to(source_file)
+    source_file.write_header(source_header)
     source_file.close()
 
     var reader = RawAlignmentFile(source_path, String("r"))
@@ -188,7 +187,7 @@ def test_raw_header_adopt_and_write_to() raises:
     var path = String("/tmp/hts_mojo_raw_header_write.sam")
     var file = RawAlignmentFile(path, String("w"))
     var _ = file.ptr()
-    adopted.write_to(file)
+    file.write_header(adopted)
     file.close()
 
 

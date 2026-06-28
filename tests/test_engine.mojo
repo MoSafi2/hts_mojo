@@ -14,7 +14,7 @@ from hts_mojo.bam import (
     Writer,
 )
 from hts_mojo._ffi import hts_free, malloc, uint32_t
-from hts_mojo.bam.index import RawHtsIndex
+from hts_mojo.bam.file import RawHtsIndex
 
 
 def _single_match_cigar(

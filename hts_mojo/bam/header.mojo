@@ -1,7 +1,9 @@
-from std.ffi import c_char
 from std.io import Writer as IOWriter
+from std.ffi import c_char
 
 from hts_mojo.bam._common import (
+    _check_zero,
+    _cstr_ptr,
     _cstring_to_string,
     _header_lines,
     _starts_with_ascii,
@@ -331,9 +333,6 @@ struct RawSamHeader(Movable):
                 tid,
             )
         )
-
-    def write_to(mut self, mut file: RawAlignmentFile) raises:
-        file.write_header(self)
 
     def append_line(mut self, line: String) raises:
         var line_c = line
