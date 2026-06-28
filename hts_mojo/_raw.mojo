@@ -3,12 +3,26 @@ from std.ffi import CStringSlice, c_char
 from hts_mojo._ffi import (
     bam1_core_t,
     bam1_t,
+    bam_aux2A,
+    bam_aux2f,
+    bam_aux2i,
+    bam_aux2Z,
+    bam_auxB2f,
+    bam_auxB2i,
+    bam_auxB_len,
     bam_copy1,
     bam_destroy1,
     bam_dup1,
     bam_endpos,
+    bam_aux_del,
+    bam_aux_get,
+    bam_aux_type,
+    bam_aux_update_float,
+    bam_aux_update_int,
+    bam_aux_update_str,
     bam_init1,
     bam_set1,
+    c_float,
     htsFile,
     hts_close,
     hts_free,
@@ -92,6 +106,16 @@ def _bytes_with_nul_ptr(
         .unsafe_origin_cast[ImmutUntrackedOrigin]()
         .bitcast[UInt8]()
     )
+
+
+def _aux_tag(tag: String) raises -> InlineArray[c_char, 2]:
+    if tag.byte_length() != 2:
+        raise Error("aux tag must be exactly two ASCII characters")
+    _check_sam_text_ascii(tag, "aux tag must be exactly two ASCII characters")
+    var result = InlineArray[c_char, 2](fill=c_char(0))
+    result[0] = c_char(Int(String(tag[byte=0])))
+    result[1] = c_char(Int(String(tag[byte=1])))
+    return result^
 
 
 struct _OwnedByteBuffer(Movable):
@@ -603,6 +627,123 @@ struct RawBamRecord(Movable):
         if length < 0:
             return 0
         return length
+
+    def aux_get(
+        self, tag: String
+    ) raises -> Optional[UnsafePointer[UInt8, ImmutUntrackedOrigin]]:
+        var tag_key = _aux_tag(tag)
+        var ptr = bam_aux_get(
+            self.ptr()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutUntrackedOrigin](),
+            tag_key,
+        )
+        if not ptr:
+            return None
+        return (
+            ptr.value()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutUntrackedOrigin]()
+        )
+
+    def aux_type(
+        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
+    ) -> c_char:
+        return bam_aux_type(aux)
+
+    def aux_to_int(
+        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
+    ) -> Int64:
+        return Int64(bam_aux2i(aux))
+
+    def aux_to_float(
+        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
+    ) -> Float64:
+        return Float64(bam_aux2f(aux))
+
+    def aux_to_char(
+        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
+    ) -> c_char:
+        return bam_aux2A(aux)
+
+    def aux_to_string(
+        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
+    ) -> Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]:
+        var ptr = bam_aux2Z(aux)
+        if not ptr:
+            return None
+        return (
+            ptr.value()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutUntrackedOrigin]()
+        )
+
+    def aux_array_len(
+        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
+    ) -> Int:
+        return Int(bam_auxB_len(aux))
+
+    def aux_array_int(
+        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin], index: Int
+    ) raises -> Int64:
+        if index < 0:
+            raise Error("aux array index out of range")
+        return Int64(bam_auxB2i(aux, UInt32(index)))
+
+    def aux_array_float(
+        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin], index: Int
+    ) raises -> Float64:
+        if index < 0:
+            raise Error("aux array index out of range")
+        return Float64(bam_auxB2f(aux, UInt32(index)))
+
+    def set_aux_int(mut self, tag: String, value: Int64) raises:
+        var tag_key = _aux_tag(tag)
+        _check_zero(
+            Int(bam_aux_update_int(self.ptr(), tag_key, value)),
+            "failed to update integer aux tag",
+        )
+
+    def set_aux_float(mut self, tag: String, value: Float32) raises:
+        var tag_key = _aux_tag(tag)
+        _check_zero(
+            Int(bam_aux_update_float(self.ptr(), tag_key, c_float(value))),
+            "failed to update float aux tag",
+        )
+
+    def set_aux_string(mut self, tag: String, value: String) raises:
+        _check_sam_text_ascii(
+            value, "aux string must be ASCII SAM text without NUL bytes"
+        )
+        var tag_key = _aux_tag(tag)
+        var value_c = value
+        _check_zero(
+            Int(
+                bam_aux_update_str(
+                    self.ptr(),
+                    tag_key,
+                    _check_i32(value.byte_length() + 1, "aux string too long"),
+                    _cstr_ptr(value_c),
+                )
+            ),
+            "failed to update string aux tag",
+        )
+
+    def remove_aux(mut self, tag: String) raises -> Bool:
+        var tag_key = _aux_tag(tag)
+        var ptr = bam_aux_get(
+            self.ptr()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmutUntrackedOrigin](),
+            tag_key,
+        )
+        if not ptr:
+            return False
+        _check_zero(
+            Int(bam_aux_del(self.ptr(), ptr)),
+            "failed to remove aux tag",
+        )
+        return True
 
     def get_base4(self, i: Int) raises -> UInt8:
         if i < 0 or i >= self.l_seq():

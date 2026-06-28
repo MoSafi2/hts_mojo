@@ -1,4 +1,7 @@
 from hts_mojo._engine import (
+    AlignmentFormat,
+    AuxKind,
+    AuxValue,
     CIGAR_BACK,
     CIGAR_DELETION,
     CIGAR_HARD_CLIP,
@@ -13,7 +16,10 @@ from hts_mojo._engine import (
     CigarElement,
     Header,
     IndexedReader,
+    ProgramInfo,
     ReadOptions,
+    ReadGroupInfo,
+    ReferenceInfo,
     RecordsIter,
     Reader,
     Record,

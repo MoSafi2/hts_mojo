@@ -1,6 +1,9 @@
 from hts_mojo.bam import (
+    AlignmentFormat,
     BamRecord,
     AlignmenetFileHeader,
+    AuxKind,
+    AuxValue,
     BamReader,
     CIGAR_BACK,
     CIGAR_DELETION,
@@ -13,4 +16,8 @@ from hts_mojo.bam import (
     CIGAR_SEQUENCE_MISMATCH,
     CIGAR_SOFT_CLIP,
     CigarElement,
+    ProgramInfo,
+    ReadGroupInfo,
+    ReferenceInfo,
+    SamFlag,
 )

@@ -1,4 +1,7 @@
 from hts_mojo.aln import (
+    AlignmentFormat,
+    AuxKind,
+    AuxValue,
     CIGAR_BACK,
     CIGAR_DELETION,
     CIGAR_HARD_CLIP,
@@ -13,7 +16,10 @@ from hts_mojo.aln import (
     CigarElement,
     Header as AlignmenetFileHeader,
     IndexedReader,
+    ProgramInfo,
     ReadOptions,
+    ReadGroupInfo,
+    ReferenceInfo,
     RecordsIter,
     Reader as BamReader,
     Record as BamRecord,
