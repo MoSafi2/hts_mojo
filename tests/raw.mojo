@@ -131,12 +131,24 @@ def test_raw_header_lifecycle() raises:
         raise Error("dup header should preserve references")
 
 
+def test_raw_header_missing_reference_lookup() raises:
+    var text = _terminated(String("@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:1000\n"))
+    var header = RawSamHeader(text)
+    if header.text_length() <= 0:
+        raise Error("header text_length should be positive")
+    if header.name2tid(_terminated(String("missing"))) != -1:
+        raise Error("missing reference should return -1")
+    if header.tid2name(1):
+        raise Error("out-of-range tid should not resolve to a name")
+
+
 def test_raw_file_lifecycle() raises:
     var path = _terminated(String("/tmp/hts_mojo_raw_lifecycle.sam"))
     var file = RawSamFile()
     file.close()
 
     var writer = RawSamFile(path, _terminated(String("w")))
+    writer.close()
     writer.close()
 
 
@@ -146,6 +158,50 @@ def test_raw_record_lifecycle() raises:
     var dup = record.dup()
     record.copy_from(copy)
     _ = dup
+
+
+def test_raw_record_set1_sam_rejects_length_mismatch() raises:
+    var record = RawBamRecord()
+    try:
+        record.set1_sam(
+            String("read-1"),
+            UInt16(4),
+            -1,
+            -1,
+            0,
+            0,
+            None,
+            -1,
+            -1,
+            0,
+            String("AC"),
+            String("!"),
+        )
+    except e:
+        return
+    raise Error("set1_sam should reject mismatched sequence and quality lengths")
+
+
+def test_raw_record_set1_sam_rejects_non_sam_quality() raises:
+    var record = RawBamRecord()
+    try:
+        record.set1_sam(
+            String("read-1"),
+            UInt16(4),
+            -1,
+            -1,
+            0,
+            0,
+            None,
+            -1,
+            -1,
+            0,
+            String("A"),
+            String(" "),
+        )
+    except e:
+        return
+    raise Error("set1_sam should reject quality bytes below ASCII 33")
 
 
 def test_raw_file_index_and_iterator() raises:

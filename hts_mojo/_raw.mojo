@@ -46,6 +46,15 @@ from hts_mojo._ffi import (
     uint32_t,
 )
 
+# Thin RAII wrappers over the generated HTSlib FFI surface.
+#
+# These types intentionally stay close to HTSlib semantics:
+# - constructors acquire ownership of newly created/read handles
+# - destructors release owned HTSlib resources
+# - `ptr()` exposes the mutable raw pointer for interop with lower-level calls
+# - string inputs passed into HTSlib must already be NUL-terminated
+#
+# This layer is meant for internal plumbing, not a high-level public API.
 
 def _cstr(s: String) raises -> UnsafePointer[c_char, ImmutUntrackedOrigin]:
     return (
@@ -74,6 +83,8 @@ def _bytes_with_nul(s: String) raises -> UnsafePointer[UInt8, ImmutUntrackedOrig
 struct _OwnedByteBuffer(Movable):
     var _ptr: Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]
 
+    # Temporary malloc-backed storage for arguments that must outlive
+    # a single FFI call but still be released deterministically.
     def __init__(out self, size: Int) raises:
         if size <= 0:
             self._ptr = None
@@ -106,6 +117,8 @@ def _check_not_none[
     return value.value().copy()
 
 
+# Owns an `htsFile*`.
+# A default-constructed value is empty; `close()` is idempotent.
 struct RawSamFile(Movable):
     var _ptr: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]]
 
@@ -144,6 +157,8 @@ struct RawSamFile(Movable):
             self._ptr = None
 
 
+# Owns a `sam_hdr_t*`.
+# The `text` constructor expects a fully NUL-terminated SAM header string.
 struct RawSamHeader(Movable):
     var _ptr: Optional[UnsafePointer[sam_hdr_t, MutUntrackedOrigin]]
 
@@ -222,6 +237,9 @@ struct RawSamHeader(Movable):
         )
 
 
+# Owns a `bam1_t*`.
+# `set1()` is a direct pass-through to HTSlib and expects HTSlib-native payloads.
+# Use `set1_sam()` when the inputs are SAM-style strings.
 struct RawBamRecord(Movable):
     var _ptr: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]
 
@@ -276,6 +294,11 @@ struct RawBamRecord(Movable):
         qual: UnsafePointer[c_char, ImmutUntrackedOrigin],
         l_aux: UInt,
     ) raises:
+        # Low-level contract:
+        # - `qname` must point at a NUL-terminated query name
+        # - `l_qname` must match the HTSlib expectation for that name
+        # - `seq` and `qual` must already be in the byte layout accepted by
+        #   `bam_set1`; this helper does not normalize them
         _check_code(
             Int(
                 bam_set1(
@@ -316,6 +339,11 @@ struct RawBamRecord(Movable):
         qual: String,
         l_aux: UInt = 0,
     ) raises:
+        # Convenience adapter for common test/setup code:
+        # - `seq` is passed through as a NUL-terminated SAM sequence string
+        # - `qual` must be SAM ASCII qualities and is converted to raw Phred
+        # This keeps the byte normalization in one place instead of scattering
+        # ad hoc conversions at call sites.
         if seq.byte_length() != qual.byte_length():
             raise Error("sequence and quality strings must have the same length")
 
@@ -355,6 +383,8 @@ struct RawBamRecord(Movable):
         )
 
 
+# Owns an `hts_idx_t*`.
+# The file-based constructors load an existing index; `build()` creates one on disk.
 struct RawHtsIndex(Movable):
     var _ptr: Optional[UnsafePointer[hts_idx_t, MutUntrackedOrigin]]
 
@@ -425,6 +455,9 @@ struct RawHtsIndex(Movable):
         )
 
 
+# Owns an `hts_itr_t*`.
+# `next()` mirrors HTSlib return codes: non-negative for a record, `-1` at EOF,
+# and values below `-1` for harder failures.
 struct RawHtsIterator(Movable):
     var _ptr: Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]]
 
@@ -468,6 +501,7 @@ struct RawHtsIterator(Movable):
         return self._ptr.value()
 
     def next(self, file: RawSamFile, mut record: RawBamRecord) -> Int:
+        # HTSlib iterator advancement is BGZF-backed for BAM/CRAM access.
         return Int(
             hts_itr_next(
                 hts_get_bgzfp(file.ptr()),
