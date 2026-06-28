@@ -1,7 +1,7 @@
 from std.ffi import c_char
 from std.testing import TestSuite
 
-from hts_mojo._engine import (
+from hts_mojo.bam import (
     AlignmentFormat,
     AuxKind,
     Header,
@@ -14,7 +14,7 @@ from hts_mojo._engine import (
     Writer,
 )
 from hts_mojo._ffi import hts_free, malloc, uint32_t
-from hts_mojo._raw import RawHtsIndex
+from hts_mojo.bam.index import RawHtsIndex
 
 
 def _single_match_cigar(

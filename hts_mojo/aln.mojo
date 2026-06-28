@@ -1,4 +1,4 @@
-from hts_mojo._engine import (
+from hts_mojo.bam import (
     AlignmentFormat,
     AuxKind,
     AuxValue,

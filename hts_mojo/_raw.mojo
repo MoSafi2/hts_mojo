@@ -1,4 +1,19 @@
 from std.ffi import CStringSlice, c_char
+from hts_mojo.bam._common import (
+    _cstr_ptr,
+    _check_sam_text_ascii,
+    _terminated,
+    _check_zero,
+    _check_nonnegative,
+    _check_nonnegative_i32,
+    _check_ptr,
+    _aux_tag,
+    _aux_tag_cstr,
+    _OwnedByteBuffer,
+    _check_i32,
+    _bytes_with_nul_ptr,
+    _ensure_nul
+)
 
 from hts_mojo._ffi import (
     bam1_core_t,
@@ -60,127 +75,6 @@ from hts_mojo._ffi import (
 )
 
 
-def _ensure_nul(mut s: String):
-    if s.byte_length() == 0:
-        s += "\0"
-        return
-    if String(s[byte=s.byte_length() - 1]) != "\0":
-        s += "\0"
-
-
-def _terminated(s: String) -> String:
-    var result = s
-    _ensure_nul(result)
-    return result^
-
-
-def _check_sam_text_ascii(value: String, context: String) raises:
-    for cp in value.codepoint_slices():
-        var ch = String(cp)
-        if ch == "\0":
-            raise Error(context)
-        if ch.byte_length() != 1:
-            raise Error(context)
-
-
-def _cstr_ptr(var s: String) raises -> UnsafePointer[c_char, ImmutUntrackedOrigin]:
-    _ensure_nul(s)
-    return (
-        CStringSlice(s)
-        .as_bytes_with_nul()
-        .unsafe_ptr()
-        .unsafe_origin_cast[ImmutUntrackedOrigin]()
-        .bitcast[c_char]()
-    )
-
-
-def _bytes_with_nul_ptr(
-    var s: String,
-) raises -> UnsafePointer[UInt8, ImmutUntrackedOrigin]:
-    _ensure_nul(s)
-    return (
-        CStringSlice(s)
-        .as_bytes_with_nul()
-        .unsafe_ptr()
-        .unsafe_origin_cast[ImmutUntrackedOrigin]()
-        .bitcast[UInt8]()
-    )
-
-
-def _aux_tag(tag: String) raises -> InlineArray[c_char, 2]:
-    if tag.byte_length() != 2:
-        raise Error("aux tag must be exactly two ASCII characters")
-    _check_sam_text_ascii(tag, "aux tag must be exactly two ASCII characters")
-    var tag_c = tag
-    var tag_bytes = _bytes_with_nul_ptr(tag_c)
-    var result = InlineArray[c_char, 2](fill=c_char(0))
-    result[0] = c_char(Int(tag_bytes[0]))
-    result[1] = c_char(Int(tag_bytes[1]))
-    return result^
-
-
-def _aux_tag_cstr(tag: String) raises -> String:
-    if tag.byte_length() != 2:
-        raise Error("aux tag must be exactly two ASCII characters")
-    _check_sam_text_ascii(tag, "aux tag must be exactly two ASCII characters")
-    return _terminated(tag)
-
-
-struct _OwnedByteBuffer(Movable):
-    var _ptr: Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]
-
-    def __init__(out self, size: Int) raises:
-        if size <= 0:
-            self._ptr = None
-            return
-        var mem = malloc(UInt(size))
-        if not mem:
-            raise Error("failed to allocate temporary BAM buffer")
-        self._ptr = rebind[Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]](
-            mem
-        )
-        for i in range(size):
-            self._ptr.value()[i] = UInt8(0)
-
-    def __del__(deinit self):
-        if self._ptr:
-            hts_free(self._ptr.value().bitcast[NoneType]())
-
-    def ptr(self) -> Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]:
-        return self._ptr
-
-
-def _check_zero(code: Int, context: String) raises:
-    if code != 0:
-        raise Error(context)
-
-
-def _check_nonnegative(code: Int, context: String) raises -> Int:
-    if code < 0:
-        raise Error(context)
-    return code
-
-
-def _check_i32(value: Int, context: String) raises -> Int32:
-    if value < -2147483648 or value > 2147483647:
-        raise Error(context)
-    return Int32(value)
-
-
-def _check_nonnegative_i32(value: Int, context: String) raises -> Int32:
-    if value < 0:
-        raise Error(context)
-    return _check_i32(value, context)
-
-
-def _check_ptr[
-    T: Movable & Copyable
-](value: Optional[T], context: String) raises -> T:
-    if not value:
-        raise Error(context)
-    return value.value().copy()
-
-
 struct RawAlignmentFile(Movable):
     var _ptr: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]]
 
@@ -200,7 +94,9 @@ struct RawAlignmentFile(Movable):
             raise Error("alignment file is closed")
         return self._ptr.value()
 
-    def unsafe_ptr_unchecked(self) -> UnsafePointer[htsFile, MutUntrackedOrigin]:
+    def unsafe_ptr_unchecked(
+        self,
+    ) -> UnsafePointer[htsFile, MutUntrackedOrigin]:
         return self._ptr.value()
 
     def close(mut self) raises:
@@ -378,439 +274,6 @@ struct RawSamHeader(Movable):
         # points such as sam_hdr_add_pg(...).
 
 
-struct RawBamRecord(Movable):
-    var _ptr: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]
-
-    def __init__(out self) raises:
-        self._ptr = bam_init1()
-        if not self._ptr:
-            raise Error("failed to allocate alignment record")
-
-    def __del__(deinit self):
-        if self._ptr:
-            bam_destroy1(self._ptr.value())
-
-    def ptr(self) raises -> UnsafePointer[bam1_t, MutUntrackedOrigin]:
-        if not self._ptr:
-            raise Error("alignment record is unavailable")
-        return self._ptr.value()
-
-    def unsafe_ptr_unchecked(self) -> UnsafePointer[bam1_t, MutUntrackedOrigin]:
-        return self._ptr.value()
-
-    def dup(self) raises -> Self:
-        return Self._adopt_copy(
-            bam_dup1(
-                self.ptr()
-                .unsafe_mut_cast[False]()
-                .unsafe_origin_cast[ImmutUntrackedOrigin]()
-            )
-        )
-
-    def copy_from(mut self, read other: RawBamRecord) raises:
-        self._ptr = _check_ptr(
-            bam_copy1(
-                self.ptr(),
-                other.ptr()
-                .unsafe_mut_cast[False]()
-                .unsafe_origin_cast[ImmutUntrackedOrigin](),
-            ),
-            "failed to copy alignment record",
-        )
-
-    def set1(
-        mut self,
-        l_qname: UInt,
-        qname: UnsafePointer[c_char, ImmutUntrackedOrigin],
-        flag: UInt16,
-        tid: Int32,
-        pos: Int64,
-        mapq: UInt8,
-        n_cigar: UInt,
-        cigar: Optional[UnsafePointer[uint32_t, ImmutUntrackedOrigin]],
-        mtid: Int32,
-        mpos: Int64,
-        isize: Int64,
-        l_seq: UInt,
-        seq: UnsafePointer[c_char, ImmutUntrackedOrigin],
-        qual: UnsafePointer[c_char, ImmutUntrackedOrigin],
-        l_aux: UInt,
-    ) raises:
-        _ = _check_nonnegative(
-            Int(
-                bam_set1(
-                    self.ptr(),
-                    l_qname,
-                    qname,
-                    flag,
-                    tid,
-                    pos,
-                    mapq,
-                    n_cigar,
-                    cigar,
-                    mtid,
-                    mpos,
-                    isize,
-                    l_seq,
-                    seq,
-                    qual,
-                    l_aux,
-                )
-            ),
-            "failed to populate alignment record",
-        )
-
-    def set1_from_sam_fields(
-        mut self,
-        qname: String,
-        flag: UInt16,
-        tid: Int32,
-        pos: Int64,
-        mapq: UInt8,
-        n_cigar: UInt,
-        cigar: Optional[UnsafePointer[uint32_t, ImmutUntrackedOrigin]],
-        mtid: Int32,
-        mpos: Int64,
-        isize: Int64,
-        seq: String,
-        qual: String,
-        l_aux: UInt = 0,
-    ) raises:
-        _check_sam_text_ascii(
-            qname, "query name must be ASCII SAM text without NUL bytes"
-        )
-        _check_sam_text_ascii(
-            seq, "sequence must be ASCII SAM text without NUL bytes"
-        )
-
-        var missing_qual = qual == String("*")
-        if not missing_qual:
-            _check_sam_text_ascii(
-                qual, "quality string must be ASCII SAM text without NUL bytes"
-            )
-
-        if not missing_qual and seq.byte_length() != qual.byte_length():
-            raise Error(
-                "sequence and quality strings must have the same length"
-            )
-
-        var seq_len = Int(seq.byte_length())
-        var seq_c = seq
-        var encoded_qual = _OwnedByteBuffer(seq_len)
-        if seq_len > 0 and not encoded_qual.ptr():
-            raise Error("failed to allocate temporary quality buffer")
-
-        if seq_len > 0:
-            if missing_qual:
-                for i in range(seq_len):
-                    encoded_qual.ptr().value()[i] = UInt8(0xFF)
-            else:
-                var qual_c = qual
-                var qual_bytes = _bytes_with_nul_ptr(qual_c)
-                for i in range(seq_len):
-                    var phred_ascii = qual_bytes[i]
-                    if phred_ascii < UInt8(33):
-                        raise Error(
-                            "quality string must use SAM ASCII with +33 offset"
-                        )
-                    encoded_qual.ptr().value()[i] = phred_ascii - UInt8(33)
-
-        var qname_c = qname
-        _ensure_nul(qname_c)
-        var qual_ptr = UnsafePointer[
-            c_char, ImmutUntrackedOrigin
-        ].unsafe_dangling()
-        if seq_len > 0:
-            qual_ptr = (
-                encoded_qual.ptr()
-                .value()
-                .unsafe_mut_cast[False]()
-                .unsafe_origin_cast[ImmutUntrackedOrigin]()
-                .bitcast[c_char]()
-            )
-        self.set1(
-            UInt(qname_c.byte_length()),
-            _cstr_ptr(qname_c),
-            flag,
-            tid,
-            pos,
-            mapq,
-            n_cigar,
-            cigar,
-            mtid,
-            mpos,
-            isize,
-            UInt(seq_len),
-            _cstr_ptr(seq_c),
-            qual_ptr,
-            l_aux,
-        )
-
-    def raw_core_ptr(self) -> UnsafePointer[bam1_core_t, MutUntrackedOrigin]:
-        return UnsafePointer(
-            to=self.unsafe_ptr_unchecked()[].core
-        ).unsafe_origin_cast[
-            MutUntrackedOrigin
-        ]()
-
-    def tid(self) -> Int32:
-        return self.unsafe_ptr_unchecked()[].core.tid
-
-    def pos0(self) -> Int64:
-        return self.unsafe_ptr_unchecked()[].core.pos
-
-    def end_pos0(self) -> Int64:
-        return Int64(
-            bam_endpos(
-                self.unsafe_ptr_unchecked()
-                .unsafe_mut_cast[False]()
-                .unsafe_origin_cast[ImmutUntrackedOrigin]()
-            )
-        )
-
-    def flag(self) -> UInt16:
-        return self.unsafe_ptr_unchecked()[].core.flag
-
-    def mapq(self) -> UInt8:
-        return self.unsafe_ptr_unchecked()[].core.qual
-
-    def mate_tid(self) -> Int32:
-        return self.unsafe_ptr_unchecked()[].core.mtid
-
-    def mate_pos0(self) -> Int64:
-        return self.unsafe_ptr_unchecked()[].core.mpos
-
-    def insert_size(self) -> Int64:
-        return self.unsafe_ptr_unchecked()[].core.isize
-
-    def l_seq(self) -> Int:
-        return Int(self.unsafe_ptr_unchecked()[].core.l_qseq)
-
-    def n_cigar(self) -> Int:
-        return Int(self.unsafe_ptr_unchecked()[].core.n_cigar)
-
-    def borrowed_qname_ptr(
-        self,
-    ) -> Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]:
-        if not self._data_ptr():
-            return None
-        return (
-            self._data_ptr()
-            .value()
-            .unsafe_mut_cast[False]()
-            .unsafe_origin_cast[ImmutUntrackedOrigin]()
-            .bitcast[c_char]()
-        )
-
-    def borrowed_cigar_ptr(
-        self,
-    ) -> Optional[UnsafePointer[uint32_t, ImmutUntrackedOrigin]]:
-        if self.n_cigar() == 0 or not self._data_ptr():
-            return None
-        return self._offset_ptr(self._qname_bytes()).value().bitcast[uint32_t]()
-
-    def borrowed_seq_ptr(
-        self,
-    ) -> Optional[UnsafePointer[UInt8, ImmutUntrackedOrigin]]:
-        if self.l_seq() == 0 or not self._data_ptr():
-            return None
-        return self._offset_ptr(self._seq_offset())
-
-    def borrowed_qual_ptr(
-        self,
-    ) -> Optional[UnsafePointer[UInt8, ImmutUntrackedOrigin]]:
-        if self.l_seq() == 0 or not self._data_ptr():
-            return None
-        return self._offset_ptr(self._qual_offset())
-
-    def borrowed_aux_ptr(
-        self,
-    ) -> Optional[UnsafePointer[UInt8, ImmutUntrackedOrigin]]:
-        if self.aux_len() == 0 or not self._data_ptr():
-            return None
-        return self._offset_ptr(self._aux_offset())
-
-    def aux_len(self) -> Int:
-        var length = self._data_len() - self._aux_offset()
-        if length < 0:
-            return 0
-        return length
-
-    def aux_get(
-        self, tag: String
-    ) raises -> Optional[UnsafePointer[UInt8, ImmutUntrackedOrigin]]:
-        var tag_key = _aux_tag_cstr(tag)
-        var ptr = hts_mojo_bam_aux_get(
-            self.ptr()
-            .unsafe_mut_cast[False]()
-            .unsafe_origin_cast[ImmutUntrackedOrigin](),
-            _cstr_ptr(tag_key),
-        )
-        if not ptr:
-            return None
-        return (
-            ptr.value()
-            .unsafe_mut_cast[False]()
-            .unsafe_origin_cast[ImmutUntrackedOrigin]()
-        )
-
-    def aux_type(
-        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
-    ) -> c_char:
-        return c_char(Int(aux[0]))
-
-    def aux_to_int(
-        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
-    ) -> Int64:
-        return Int64(bam_aux2i(aux))
-
-    def aux_to_float(
-        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
-    ) -> Float64:
-        return Float64(bam_aux2f(aux))
-
-    def aux_to_char(
-        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
-    ) -> c_char:
-        return bam_aux2A(aux)
-
-    def aux_to_string(
-        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
-    ) -> Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]:
-        var ptr = bam_aux2Z(aux)
-        if not ptr:
-            return None
-        return (
-            ptr.value()
-            .unsafe_mut_cast[False]()
-            .unsafe_origin_cast[ImmutUntrackedOrigin]()
-        )
-
-    def aux_array_len(
-        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
-    ) -> Int:
-        return Int(bam_auxB_len(aux))
-
-    def aux_array_int(
-        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin], index: Int
-    ) raises -> Int64:
-        if index < 0:
-            raise Error("aux array index out of range")
-        return Int64(bam_auxB2i(aux, UInt32(index)))
-
-    def aux_array_float(
-        self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin], index: Int
-    ) raises -> Float64:
-        if index < 0:
-            raise Error("aux array index out of range")
-        return Float64(bam_auxB2f(aux, UInt32(index)))
-
-    def set_aux_int(mut self, tag: String, value: Int64) raises:
-        var tag_key = _aux_tag_cstr(tag)
-        _check_zero(
-            Int(hts_mojo_bam_aux_update_int(self.ptr(), _cstr_ptr(tag_key), value)),
-            "failed to update integer aux tag",
-        )
-
-    def set_aux_float(mut self, tag: String, value: Float32) raises:
-        var tag_key = _aux_tag_cstr(tag)
-        _check_zero(
-            Int(
-                hts_mojo_bam_aux_update_float(
-                    self.ptr(), _cstr_ptr(tag_key), c_float(value)
-                )
-            ),
-            "failed to update float aux tag",
-        )
-
-    def set_aux_string(mut self, tag: String, value: String) raises:
-        _check_sam_text_ascii(
-            value, "aux string must be ASCII SAM text without NUL bytes"
-        )
-        var tag_key = _aux_tag_cstr(tag)
-        var value_c = value
-        _check_zero(
-            Int(
-                hts_mojo_bam_aux_update_str(
-                    self.ptr(),
-                    _cstr_ptr(tag_key),
-                    _check_i32(value.byte_length() + 1, "aux string too long"),
-                    _cstr_ptr(value_c),
-                )
-            ),
-            "failed to update string aux tag",
-        )
-
-    def remove_aux(mut self, tag: String) raises -> Bool:
-        var tag_key = _aux_tag_cstr(tag)
-        var rc = Int(hts_mojo_bam_aux_del_by_tag(self.ptr(), _cstr_ptr(tag_key)))
-        if rc == 1:
-            return False
-        _check_zero(rc, "failed to remove aux tag")
-        return True
-
-    def get_base4(self, i: Int) raises -> UInt8:
-        if i < 0 or i >= self.l_seq():
-            raise Error("base index out of range")
-        var seq = _check_ptr(self.borrowed_seq_ptr(), "missing sequence data")
-        var packed = seq[i >> 1]
-        if (i & 1) == 0:
-            return (packed >> 4) & UInt8(0xF)
-        return packed & UInt8(0xF)
-
-    def get_qual(self, i: Int) raises -> UInt8:
-        if i < 0 or i >= self.l_seq():
-            raise Error("quality index out of range")
-        var qual = _check_ptr(self.borrowed_qual_ptr(), "missing quality data")
-        return qual[i]
-
-    @staticmethod
-    def _adopt_copy(
-        ptr: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]
-    ) raises -> Self:
-        var result = Self()
-        if result._ptr:
-            bam_destroy1(result._ptr.value())
-        result._ptr = _check_ptr(ptr, "failed to duplicate alignment record")
-        return result^
-
-    def _data_ptr(self) -> Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]:
-        return self.unsafe_ptr_unchecked()[].data
-
-    def _data_len(self) -> Int:
-        return Int(self.unsafe_ptr_unchecked()[].l_data)
-
-    def _qname_bytes(self) -> Int:
-        return Int(self.unsafe_ptr_unchecked()[].core.l_qname)
-
-    def _cigar_bytes(self) -> Int:
-        return self.n_cigar() * 4
-
-    def _seq_offset(self) -> Int:
-        return self._qname_bytes() + self._cigar_bytes()
-
-    def _seq_bytes(self) -> Int:
-        return (self.l_seq() + 1) >> 1
-
-    def _qual_offset(self) -> Int:
-        return self._seq_offset() + self._seq_bytes()
-
-    def _aux_offset(self) -> Int:
-        return self._qual_offset() + self.l_seq()
-
-    def _offset_ptr(
-        self, offset: Int
-    ) -> Optional[UnsafePointer[UInt8, ImmutUntrackedOrigin]]:
-        if not self._data_ptr():
-            return None
-        return (
-            self._data_ptr()
-            .value()
-            .unsafe_mut_cast[False]()
-            .unsafe_origin_cast[ImmutUntrackedOrigin]()
-            + offset
-        )
-
 
 struct RawHtsIndex(Movable):
     var _ptr: Optional[UnsafePointer[hts_idx_t, MutUntrackedOrigin]]
@@ -835,7 +298,9 @@ struct RawHtsIndex(Movable):
         var path_c = path
         var index_path_c = index_path
         return Self._adopt(
-            sam_index_load2(file.ptr(), _cstr_ptr(path_c), _cstr_ptr(index_path_c)),
+            sam_index_load2(
+                file.ptr(), _cstr_ptr(path_c), _cstr_ptr(index_path_c)
+            ),
             "failed to load alignment index",
         )
 
@@ -903,7 +368,9 @@ struct RawHtsIndex(Movable):
             raise Error("alignment index is unavailable")
         return self._ptr.value()
 
-    def unsafe_ptr_unchecked(self) -> UnsafePointer[hts_idx_t, MutUntrackedOrigin]:
+    def unsafe_ptr_unchecked(
+        self,
+    ) -> UnsafePointer[hts_idx_t, MutUntrackedOrigin]:
         return self._ptr.value()
 
     @staticmethod
@@ -970,7 +437,9 @@ struct RawHtsIterator(Movable):
             raise Error("alignment iterator is unavailable")
         return self._ptr.value()
 
-    def unsafe_ptr_unchecked(self) -> UnsafePointer[hts_itr_t, MutUntrackedOrigin]:
+    def unsafe_ptr_unchecked(
+        self,
+    ) -> UnsafePointer[hts_itr_t, MutUntrackedOrigin]:
         return self._ptr.value()
 
     def next_status(

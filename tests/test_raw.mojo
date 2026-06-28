@@ -3,12 +3,7 @@ from std.sys.info import size_of
 from std.testing import TestSuite
 
 from hts_mojo._ffi import hts_free, malloc, sam_hdr_read, uint32_t
-from hts_mojo._raw import (
-    RawAlignmentFile,
-    RawBamRecord,
-    RawHtsIndex,
-    RawHtsIterator,
-    RawSamHeader,
+from hts_mojo.bam._common import (
     _bytes_with_nul_ptr,
     _check_nonnegative,
     _check_ptr,
@@ -16,6 +11,10 @@ from hts_mojo._raw import (
     _cstr_ptr,
     _terminated,
 )
+from hts_mojo.bam.header import RawSamHeader
+from hts_mojo.bam.index import RawHtsIndex, RawHtsIterator
+from hts_mojo.bam.readers_writer import RawAlignmentFile
+from hts_mojo.bam.record import RawBamRecord
 
 
 def _string_from_cstr(

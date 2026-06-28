@@ -1,5 +1,6 @@
 from hts_mojo.bam import AlignmenetFileHeader, BamReader, BamRecord, Writer
-from hts_mojo._engine import AlignmentFormat, Record
+from hts_mojo.bam.readers_writer import AlignmentFormat
+from hts_mojo.bam.record import Record
 
 
 def _write_fixture(path: String) raises:

@@ -16,8 +16,10 @@ from hts_mojo.bam import (
     CIGAR_SEQUENCE_MISMATCH,
     CIGAR_SOFT_CLIP,
     CigarElement,
+    CigarOp,
     ProgramInfo,
     ReadGroupInfo,
     ReferenceInfo,
     SamFlag,
+    Writer,
 )
