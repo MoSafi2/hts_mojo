@@ -1,12 +1,27 @@
+from std.ffi import c_char
+from std.io import Writer as IOWriter
+
 from hts_mojo.bam._common import (
+    _cstring_to_string,
     _header_lines,
     _starts_with_ascii,
     _split_tab_fields,
     _field_value,
 )
-from hts_mojo._ffi import sam_hdr_t, sam_hdr_length, sam_hdr_dup
-
-comptime AlignmenetFileHeader = Header
+from hts_mojo._ffi import (
+    sam_hdr_add_lines,
+    sam_hdr_destroy,
+    sam_hdr_dup,
+    sam_hdr_init,
+    sam_hdr_length,
+    sam_hdr_name2tid,
+    sam_hdr_nref,
+    sam_hdr_parse,
+    sam_hdr_str,
+    sam_hdr_tid2len,
+    sam_hdr_tid2name,
+    sam_hdr_t,
+)
 
 
 @fieldwise_init
@@ -220,7 +235,7 @@ struct Header(Movable, Writable):
         line += "\n"
         self._raw.append_line(line)
 
-    def write_to[w: Writer](self, mut writer: w):
+    def write_to[w: IOWriter](self, mut writer: w):
         writer.write(self.text())
 
 
@@ -334,3 +349,6 @@ struct RawSamHeader(Movable):
         )
         # TODO: Add program-group helpers once Mojo can bind HTSlib vararg entry
         # points such as sam_hdr_add_pg(...).
+
+
+comptime AlignmenetFileHeader = Header

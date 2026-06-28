@@ -331,4 +331,3 @@ def _field_value(field: String, key: String) -> Optional[String]:
     for i in range(3, field.byte_length()):
         value += String(field[byte=i])
     return value
-

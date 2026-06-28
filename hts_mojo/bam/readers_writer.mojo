@@ -1,7 +1,5 @@
-from hts_mojo.bam.record import RecordsIter
-from hts_mojo._raw import RawSamHeader
-
 from std.ffi import CStringSlice, c_char
+
 from hts_mojo.bam._common import (
     _cstr_ptr,
     _check_sam_text_ascii,
@@ -17,6 +15,9 @@ from hts_mojo.bam._common import (
     _bytes_with_nul_ptr,
     _ensure_nul,
 )
+from hts_mojo.bam.header import Header, RawSamHeader
+from hts_mojo.bam.index import RawHtsIndex, RawHtsIterator
+from hts_mojo.bam.record import RawBamRecord, Record
 
 from hts_mojo._ffi import (
     htsFile,
@@ -101,6 +102,73 @@ struct WriteOptions(Copyable, Movable):
     var compression_level: Optional[Int]
 
 
+struct RecordsIter(Movable):
+    var _reader: UnsafePointer[Reader, MutUntrackedOrigin]
+    var _iter: Optional[RawHtsIterator]
+    var _cached: Optional[RawBamRecord]
+
+    def __init__(
+        out self,
+        reader: UnsafePointer[Reader, MutUntrackedOrigin],
+        var iter: Optional[RawHtsIterator] = None,
+    ):
+        self._reader = reader
+        self._iter = iter^
+        self._cached = None
+
+    def read_into(mut self, mut record: Record) raises -> Bool:
+        if self._cached:
+            var cached = self._cached^
+            self._cached = None
+            record._raw.copy_from(cached.value())
+            return True
+        if self._iter:
+            var rc = self._iter.value().next_status(
+                self._reader[]._file, record._raw
+            )
+            if rc >= 0:
+                return True
+            if rc == -1:
+                return False
+            raise Error("failed to read indexed alignment record")
+
+        return self._reader[].read_into(record)
+
+    def next(mut self) raises -> Optional[Record]:
+        var record = Record()
+        if not self.read_into(record):
+            return None
+        return record^
+
+    def has_next(mut self) raises -> Bool:
+        if self._cached:
+            return True
+        var raw_record = RawBamRecord()
+        if self._iter:
+            var rc = self._iter.value().next_status(
+                self._reader[]._file, raw_record
+            )
+            if rc >= 0:
+                self._cached = raw_record^
+                return True
+            if rc == -1:
+                return False
+            raise Error("failed to read indexed alignment record")
+
+        var rc = self._reader[]._file.read1_status(
+            self._reader[]._header, raw_record
+        )
+        if rc >= 0:
+            self._cached = raw_record^
+            return True
+        if rc == -1:
+            return False
+        raise Error("failed to read alignment record")
+
+    def pop_next(mut self) raises -> Optional[Record]:
+        return self.next()
+
+
 @fieldwise_init
 struct AlignmentFormat(Comparable, TrivialRegisterPassable):
     var value: UInt8
@@ -118,7 +186,7 @@ struct AlignmentFormat(Comparable, TrivialRegisterPassable):
 
 struct IndexedReader(Movable):
     var _reader: Reader
-    var _index: Optional[_raw.RawHtsIndex]
+    var _index: Optional[RawHtsIndex]
 
     @staticmethod
     def open(
@@ -159,21 +227,21 @@ struct IndexedReader(Movable):
         self._index = None
         if index_path:
             if require_index:
-                self._index = _raw.RawHtsIndex.load_at(
+                self._index = RawHtsIndex.load_at(
                     self._reader._file, path, index_path.value()
                 )
             else:
                 try:
-                    self._index = _raw.RawHtsIndex.load_at(
+                    self._index = RawHtsIndex.load_at(
                         self._reader._file, path, index_path.value()
                     )
                 except e:
                     self._index = None
         elif require_index:
-            self._index = _raw.RawHtsIndex.load(self._reader._file, path)
+            self._index = RawHtsIndex.load(self._reader._file, path)
         else:
             try:
-                self._index = _raw.RawHtsIndex.load(self._reader._file, path)
+                self._index = RawHtsIndex.load(self._reader._file, path)
             except e:
                 self._index = None
 
@@ -188,7 +256,7 @@ struct IndexedReader(Movable):
             UnsafePointer(to=self._reader).unsafe_origin_cast[
                 MutUntrackedOrigin
             ](),
-            _raw.RawHtsIterator.queryi(
+            RawHtsIterator.queryi(
                 self._index.value(), tid, region.start0, region.end0
             ),
         )
@@ -200,7 +268,7 @@ struct IndexedReader(Movable):
             UnsafePointer(to=self._reader).unsafe_origin_cast[
                 MutUntrackedOrigin
             ](),
-            _raw.RawHtsIterator.querys(
+            RawHtsIterator.querys(
                 self._index.value(), self._reader._header, region
             ),
         )
@@ -229,7 +297,7 @@ struct IndexedReader(Movable):
 
 struct Reader(Movable):
     var _file: RawAlignmentFile
-    var _header: _raw.RawSamHeader
+    var _header: RawSamHeader
 
     @staticmethod
     def open(
@@ -293,7 +361,7 @@ struct Reader(Movable):
 
 struct Writer(Movable):
     var _file: RawAlignmentFile
-    var _header: _raw.RawSamHeader
+    var _header: RawSamHeader
 
     @staticmethod
     def open(

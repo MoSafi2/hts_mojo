@@ -1,4 +1,3 @@
-from hts_mojo import _raw
 from hts_mojo._ffi import (
     bam_aux2A,
     bam_aux2Z,
@@ -94,8 +93,6 @@ from hts_mojo.bam._common import (
     _aux_value_to_string,
 )
 from std.io import Writer as IOWriter
-
-comptime BamRecord = Record
 
 
 @fieldwise_init
@@ -721,73 +718,6 @@ struct Record(Movable, Writable):
         return result^
 
 
-struct RecordsIter(Movable):
-    var _reader: UnsafePointer[Reader, MutUntrackedOrigin]
-    var _iter: Optional[_raw.RawHtsIterator]
-    var _cached: Optional[RawBamRecord]
-
-    def __init__(
-        out self,
-        reader: UnsafePointer[Reader, MutUntrackedOrigin],
-        var iter: Optional[_raw.RawHtsIterator] = None,
-    ):
-        self._reader = reader
-        self._iter = iter^
-        self._cached = None
-
-    def read_into(mut self, mut record: Record) raises -> Bool:
-        if self._cached:
-            var cached = self._cached^
-            self._cached = None
-            record._raw.copy_from(cached.value())
-            return True
-        if self._iter:
-            var rc = self._iter.value().next_status(
-                self._reader[]._file, record._raw
-            )
-            if rc >= 0:
-                return True
-            if rc == -1:
-                return False
-            raise Error("failed to read indexed alignment record")
-
-        return self._reader[].read_into(record)
-
-    def next(mut self) raises -> Optional[Record]:
-        var record = Record()
-        if not self.read_into(record):
-            return None
-        return record^
-
-    def has_next(mut self) raises -> Bool:
-        if self._cached:
-            return True
-        var raw_record = RawBamRecord()
-        if self._iter:
-            var rc = self._iter.value().next_status(
-                self._reader[]._file, raw_record
-            )
-            if rc >= 0:
-                self._cached = raw_record^
-                return True
-            if rc == -1:
-                return False
-            raise Error("failed to read indexed alignment record")
-
-        var rc = self._reader[]._file.read1_status(
-            self._reader[]._header, raw_record
-        )
-        if rc >= 0:
-            self._cached = raw_record^
-            return True
-        if rc == -1:
-            return False
-        raise Error("failed to read alignment record")
-
-    def pop_next(mut self) raises -> Optional[Record]:
-        return self.next()
-
-
 struct RawBamRecord(Movable):
     var _ptr: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]
 
@@ -1224,3 +1154,6 @@ struct RawBamRecord(Movable):
             .unsafe_origin_cast[ImmutUntrackedOrigin]()
             + offset
         )
+
+
+comptime BamRecord = Record
