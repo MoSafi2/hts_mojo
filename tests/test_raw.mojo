@@ -9,11 +9,11 @@ from hts_mojo._raw import (
     RawHtsIndex,
     RawHtsIterator,
     RawSamHeader,
-    _bytes_with_nul,
+    _bytes_with_nul_ptr,
     _check_nonnegative,
     _check_ptr,
     _check_zero,
-    _cstr,
+    _cstr_ptr,
     _terminated,
 )
 
@@ -94,18 +94,18 @@ def _write_bam_fixture(path: String) raises:
 
 def test_cstr_helper() raises:
     var text = String("hi")
-    var ptr = _cstr(text)
+    var ptr = _cstr_ptr(text)
     if ptr[0] != 104 or ptr[1] != 105 or ptr[2] != 0:
-        raise Error("_cstr produced unexpected bytes")
+        raise Error("_cstr_ptr produced unexpected bytes")
 
     var terminated = _terminated(String("bye"))
     if terminated.byte_length() != 4:
         raise Error("_terminated should append one NUL byte")
 
     var ok = String("ok")
-    var bytes = _bytes_with_nul(ok)
+    var bytes = _bytes_with_nul_ptr(ok)
     if bytes[0] != UInt8(111) or bytes[1] != UInt8(107) or bytes[2] != UInt8(0):
-        raise Error("_bytes_with_nul produced unexpected bytes")
+        raise Error("_bytes_with_nul_ptr produced unexpected bytes")
 
 
 def test_check_helpers() raises:
@@ -242,7 +242,7 @@ def test_raw_record_accessors() raises:
     if record.raw_core_ptr()[].l_qseq != 5:
         _free_cigar(cigar)
         raise Error("raw_core_ptr mismatch")
-    if _string_from_cstr(record.borrowed_qname_ptr()) != "read-1":
+    if _string_from_cstr(record.borrowed_qname_ptr().value()) != "read-1":
         _free_cigar(cigar)
         raise Error("borrowed_qname_ptr mismatch")
     if not record.borrowed_cigar_ptr() or record.borrowed_cigar_ptr().value()[
@@ -369,7 +369,7 @@ def test_raw_file_read_write_and_iteration() raises:
     var rc = file.read1_status(header, record)
     if rc < 0:
         raise Error("read1_status should read one record")
-    if _string_from_cstr(record.borrowed_qname_ptr()) != "read-1":
+    if _string_from_cstr(record.borrowed_qname_ptr().value()) != "read-1":
         raise Error("read record qname mismatch")
     _ = record.get_qual(0)
     _ = record.get_qual(4)

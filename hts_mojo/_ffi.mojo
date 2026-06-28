@@ -12245,3 +12245,18 @@ def wrap_kbs_destroy(bs: Optional[UnsafePointer[kbitset_t, MutUntrackedOrigin]])
 
 def hts_mojo_sam_itr_next(fp: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], itr: Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], b: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]) abi("C") -> c_int:
     return external_call["hts_mojo_sam_itr_next", c_int, Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]], Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]](fp, itr, b)
+
+def hts_mojo_bam_aux_get(b: Optional[UnsafePointer[bam1_t, ImmutUntrackedOrigin]], tag: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]) abi("C") -> Optional[UnsafePointer[uint8_t, MutUntrackedOrigin]]:
+    return external_call["hts_mojo_bam_aux_get", Optional[UnsafePointer[uint8_t, MutUntrackedOrigin]], Optional[UnsafePointer[bam1_t, ImmutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]](b, tag)
+
+def hts_mojo_bam_aux_update_int(b: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]], tag: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], val: int64_t) abi("C") -> c_int:
+    return external_call["hts_mojo_bam_aux_update_int", c_int, Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], int64_t](b, tag, val)
+
+def hts_mojo_bam_aux_update_float(b: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]], tag: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], val: c_float) abi("C") -> c_int:
+    return external_call["hts_mojo_bam_aux_update_float", c_int, Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], c_float](b, tag, val)
+
+def hts_mojo_bam_aux_update_str(b: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]], tag: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], len: c_int, data: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]) abi("C") -> c_int:
+    return external_call["hts_mojo_bam_aux_update_str", c_int, Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], c_int, Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]](b, tag, len, data)
+
+def hts_mojo_bam_aux_del_by_tag(b: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]], tag: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]) abi("C") -> c_int:
+    return external_call["hts_mojo_bam_aux_del_by_tag", c_int, Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]], Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]](b, tag)

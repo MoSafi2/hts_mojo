@@ -1,0 +1,332 @@
+from std.ffi import c_char
+from std.testing import TestSuite
+
+from hts_mojo._engine import (
+    AlignmentFormat,
+    AuxKind,
+    Header,
+    IndexedReader,
+    ReadOptions,
+    Reader,
+    Record,
+    Region,
+    WriteOptions,
+    Writer,
+)
+from hts_mojo._ffi import hts_free, malloc, uint32_t
+from hts_mojo._raw import RawHtsIndex
+
+
+def _single_match_cigar(
+    length: UInt32,
+) raises -> UnsafePointer[uint32_t, ImmutUntrackedOrigin]:
+    var mem = malloc(UInt(4))
+    if not mem:
+        raise Error("malloc failed")
+    var ptr = rebind[Optional[UnsafePointer[UInt32, MutUntrackedOrigin]]](mem)
+    ptr.value()[0] = UInt32(length << 4)
+    return (
+        ptr.value()
+        .unsafe_mut_cast[False]()
+        .unsafe_origin_cast[ImmutUntrackedOrigin]()
+        .bitcast[uint32_t]()
+    )
+
+
+def _free_cigar(cigar: UnsafePointer[uint32_t, ImmutUntrackedOrigin]):
+    hts_free(cigar.unsafe_mut_cast[True]().bitcast[NoneType]())
+
+
+def _make_record(
+    qname: String,
+    flag: UInt16,
+    tid: Int32,
+    pos0: Int64,
+    mapq: UInt8,
+    mtid: Int32,
+    mpos0: Int64,
+    isize: Int64,
+    seq: String,
+    qual: String,
+) raises -> Record:
+    var record = Record()
+    var cigar = _single_match_cigar(UInt32(seq.byte_length()))
+    record._raw.set1_from_sam_fields(
+        qname, flag, tid, pos0, mapq, 1, cigar, mtid, mpos0, isize, seq, qual
+    )
+    _free_cigar(cigar)
+    return record^
+
+
+def _write_fixture(path: String) raises:
+    var header = Header.empty()
+    header.add_reference(String("chr1"), 1000)
+    header.add_read_group(String("rg1"), sample=String("sample"))
+    header.add_program(
+        String("prog1"),
+        program_name=String("hts-mojo"),
+        version=String("1.0"),
+        command_line=String("unit-test"),
+    )
+
+    var writer = Writer.open(
+        path,
+        header,
+        format=AlignmentFormat.Bam,
+        compression_level=1,
+    )
+    var first = _make_record(
+        String("read-1"),
+        UInt16(0),
+        0,
+        10,
+        42,
+        -1,
+        -1,
+        0,
+        String("ACGTN"),
+        String('!"#$%'),
+    )
+    first.set_aux_int(String("NM"), 2)
+    first.set_aux_float(String("AS"), Float32(3.5))
+    first.set_aux_string(String("RG"), String("rg1"))
+    writer.write(first)
+
+    var second = _make_record(
+        String("read-2"),
+        UInt16(0x4),
+        -1,
+        -1,
+        0,
+        -1,
+        -1,
+        0,
+        String("TTTTT"),
+        String("*****"),
+    )
+    writer.write(second)
+    writer.close()
+
+
+def test_region_validation() raises:
+    var region = Region.one_based_closed(String("chr1"), 11, 15)
+    if region.contig != "chr1" or region.start0 != 10 or region.end0 != 15:
+        raise Error("one_based_closed produced wrong coordinates")
+
+    try:
+        _ = Region.one_based_closed(String("chr1"), 0, 1)
+    except e:
+        pass
+    else:
+        raise Error("one_based_closed should reject non-positive starts")
+
+    try:
+        _ = Region.one_based_closed(String("chr1"), 5, 4)
+    except e:
+        return
+    raise Error("one_based_closed should reject descending ranges")
+
+
+def test_header_metadata_helpers() raises:
+    var header = Header.empty()
+    header.add_reference(String("chr1"), 1000)
+    header.add_reference(String("chr2"), 250)
+    header.add_read_group(
+        String("rg1"),
+        sample=String("sample-a"),
+        library=String("lib-a"),
+        platform=String("ILLUMINA"),
+    )
+    header.add_program(
+        String("pg1"),
+        program_name=String("aligner"),
+        version=String("1.2"),
+        command_line=String("aligner --flag"),
+    )
+
+    if header.n_references() != 2:
+        raise Error("n_references mismatch")
+    if not header.tid(String("chr2")) or header.tid(String("chr2")).value() != 1:
+        raise Error("tid lookup mismatch")
+    if header.require_tid(String("chr1")) != 0:
+        raise Error("require_tid mismatch")
+    if not header.reference_name(0) or header.reference_name(0).value() != "chr1":
+        raise Error("reference_name mismatch")
+    if not header.reference_length(1) or header.reference_length(1).value() != 250:
+        raise Error("reference_length mismatch")
+    if len(header.references()) != 2:
+        raise Error("references length mismatch")
+    if len(header.read_groups()) != 1:
+        raise Error("read_groups length mismatch")
+    if not header.read_groups()[0].sample or header.read_groups()[0].sample.value() != "sample-a":
+        raise Error("read-group sample mismatch")
+    if len(header.programs()) != 1:
+        raise Error("programs length mismatch")
+    if not header.programs()[0].program_name or header.programs()[0].program_name.value() != "aligner":
+        raise Error("program name mismatch")
+
+    var cloned = header.clone()
+    if cloned.text() != header.text():
+        raise Error("header clone should preserve text")
+
+    var reparsed = Header.from_text(header.text())
+    if reparsed.n_references() != 2:
+        raise Error("Header.from_text should preserve references")
+
+
+def test_record_accessors_and_aux() raises:
+    var record = _make_record(
+        String("read-1"),
+        UInt16(0x1 | 0x2 | 0x40),
+        0,
+        10,
+        42,
+        0,
+        30,
+        20,
+        String("ACGTN"),
+        String("!!!!!"),
+    )
+    record.set_aux_int(String("NM"), 1)
+    record.set_aux_float(String("AS"), Float32(2.5))
+    record.set_aux_string(String("RG"), String("rg1"))
+
+    if record.flag() != UInt16(0x1 | 0x2 | 0x40):
+        raise Error("flag mismatch")
+    if not record.flags().is_paired() or not record.is_proper_pair() or not record.is_read1():
+        raise Error("flag helper mismatch")
+    if record.is_unmapped():
+        raise Error("record should be mapped")
+    if not record.reference_id() or record.reference_id().value() != 0:
+        raise Error("reference_id mismatch")
+    if not record.reference_start() or record.reference_start().value() != 10:
+        raise Error("reference_start mismatch")
+    if not record.reference_end() or record.reference_end().value() != 15:
+        raise Error("reference_end mismatch")
+    if not record.reference_length() or record.reference_length().value() != 5:
+        raise Error("reference_length mismatch")
+    if not record.next_reference_id() or record.next_reference_id().value() != 0:
+        raise Error("next_reference_id mismatch")
+    if not record.next_reference_start() or record.next_reference_start().value() != 30:
+        raise Error("next_reference_start mismatch")
+    if record.template_length() != 20:
+        raise Error("template_length mismatch")
+    if record.query_length() != 5:
+        raise Error("query_length mismatch")
+    if record.query_name() != "read-1":
+        raise Error("query_name mismatch")
+    if record.query_sequence() != "ACGTN":
+        raise Error("query_sequence mismatch")
+
+    var quals = record.query_qualities()
+    if len(quals) != 5:
+        raise Error("query_qualities mismatch")
+    if not record.cigar_string() or record.cigar_string().value() != "5M":
+        raise Error("cigar_string mismatch")
+    if len(record.cigar()) != 1 or record.cigar()[0].length != 5:
+        raise Error("cigar mismatch")
+
+    if not record.has_aux(String("NM")):
+        raise Error("expected NM aux tag")
+    if not record.get_aux(String("NM")) or record.get_aux(String("NM")).value().kind != AuxKind.Integer:
+        raise Error("NM aux kind mismatch")
+    if record.get_aux(String("NM")).value().int_value != 1:
+        raise Error("NM aux value mismatch")
+    if not record.get_aux(String("AS")) or record.get_aux(String("AS")).value().kind != AuxKind.Float:
+        raise Error("AS aux kind mismatch")
+    if not record.get_aux(String("RG")) or record.get_aux(String("RG")).value().string_value != "rg1":
+        raise Error("RG aux string mismatch")
+    if not record.remove_aux(String("NM")) or record.has_aux(String("NM")):
+        raise Error("remove_aux should delete NM")
+
+    var cloned = record.clone()
+    if cloned.query_name() != "read-1":
+        raise Error("clone should preserve record content")
+
+
+def test_writer_and_reader_roundtrip() raises:
+    var path = String("/tmp/hts_mojo_engine_roundtrip.bam")
+    _write_fixture(path)
+
+    var options = ReadOptions(None, 0, None, False)
+    var reader = Reader.open(path, options^)
+    var header = reader.header()
+    if header.n_references() != 1:
+        raise Error("reader header references mismatch")
+    if len(header.read_groups()) != 1 or len(header.programs()) != 1:
+        raise Error("reader header metadata mismatch")
+
+    var iter = reader.records()
+    if not iter.has_next():
+        raise Error("records iterator should see first record")
+    var first = iter.next()
+    if not first or first.value().query_name() != "read-1":
+        raise Error("iterator first record mismatch")
+    if first.value().query_sequence() != "ACGTN":
+        raise Error("iterator sequence mismatch")
+    if not first.value().get_aux(String("RG")) or first.value().get_aux(String("RG")).value().string_value != "rg1":
+        raise Error("iterator aux mismatch")
+    if not iter.has_next():
+        raise Error("records iterator should see second record")
+    var second = iter.pop_next()
+    if not second or second.value().query_name() != "read-2":
+        raise Error("iterator second record mismatch")
+    if not second.value().is_unmapped():
+        raise Error("second record should be unmapped")
+    if iter.next():
+        raise Error("iterator should be exhausted")
+
+    var direct = Record()
+    var second_reader = Reader.open(path)
+    if not second_reader.read_next(direct):
+        raise Error("read_next should return first record")
+    if direct.query_name() != "read-1":
+        raise Error("read_next query_name mismatch")
+    second_reader.close()
+    reader.close()
+
+
+def test_indexed_reader_fetch() raises:
+    var path = String("/tmp/hts_mojo_engine_indexed.bam")
+    _write_fixture(path)
+    RawHtsIndex.build(path)
+
+    var indexed = IndexedReader.open(path)
+    var by_region = indexed.fetch(Region.zero_based(String("chr1"), 0, 100))
+    var first = by_region.next()
+    if not first or first.value().query_name() != "read-1":
+        raise Error("fetch(region) mismatch")
+    if by_region.next():
+        raise Error("fetch(region) should only return mapped read")
+
+    var by_string = indexed.fetch_string(String("chr1:1-100"))
+    var same = by_string.next()
+    if not same or same.value().query_name() != "read-1":
+        raise Error("fetch_string mismatch")
+    indexed.close()
+
+
+def test_writer_option_validation() raises:
+    var header = Header.empty()
+    header.add_reference(String("chr1"), 10)
+    try:
+        _ = Writer.open(
+            String("/tmp/hts_mojo_engine_invalid.sam"),
+            header,
+            format=AlignmentFormat.Sam,
+            compression_level=1,
+        )
+    except e:
+        pass
+    else:
+        raise Error("SAM output should reject compression levels")
+
+    var options = WriteOptions(None, 0, AlignmentFormat.Bam, 1)
+    var writer = Writer.open(
+        String("/tmp/hts_mojo_engine_options.bam"), header, options^
+    )
+    writer.close()
+
+
+def main() raises:
+    TestSuite.discover_tests[__functions_in_module()]().run()

@@ -10,16 +10,15 @@ from hts_mojo._ffi import (
     bam_auxB2f,
     bam_auxB2i,
     bam_auxB_len,
+    hts_mojo_bam_aux_del_by_tag,
+    hts_mojo_bam_aux_get,
+    hts_mojo_bam_aux_update_float,
+    hts_mojo_bam_aux_update_int,
+    hts_mojo_bam_aux_update_str,
     bam_copy1,
     bam_destroy1,
     bam_dup1,
     bam_endpos,
-    bam_aux_del,
-    bam_aux_get,
-    bam_aux_type,
-    bam_aux_update_float,
-    bam_aux_update_int,
-    bam_aux_update_str,
     bam_init1,
     bam_set1,
     c_float,
@@ -112,10 +111,19 @@ def _aux_tag(tag: String) raises -> InlineArray[c_char, 2]:
     if tag.byte_length() != 2:
         raise Error("aux tag must be exactly two ASCII characters")
     _check_sam_text_ascii(tag, "aux tag must be exactly two ASCII characters")
+    var tag_c = tag
+    var tag_bytes = _bytes_with_nul_ptr(tag_c)
     var result = InlineArray[c_char, 2](fill=c_char(0))
-    result[0] = c_char(Int(String(tag[byte=0])))
-    result[1] = c_char(Int(String(tag[byte=1])))
+    result[0] = c_char(Int(tag_bytes[0]))
+    result[1] = c_char(Int(tag_bytes[1]))
     return result^
+
+
+def _aux_tag_cstr(tag: String) raises -> String:
+    if tag.byte_length() != 2:
+        raise Error("aux tag must be exactly two ASCII characters")
+    _check_sam_text_ascii(tag, "aux tag must be exactly two ASCII characters")
+    return _terminated(tag)
 
 
 struct _OwnedByteBuffer(Movable):
@@ -509,9 +517,9 @@ struct RawBamRecord(Movable):
 
         var qname_c = qname
         _ensure_nul(qname_c)
-        var qual_ptr = UnsafePointer[c_char, ImmutUntrackedOrigin](
-            unsafe_from_address=0
-        )
+        var qual_ptr = UnsafePointer[
+            c_char, ImmutUntrackedOrigin
+        ].unsafe_dangling()
         if seq_len > 0:
             qual_ptr = (
                 encoded_qual.ptr()
@@ -631,12 +639,12 @@ struct RawBamRecord(Movable):
     def aux_get(
         self, tag: String
     ) raises -> Optional[UnsafePointer[UInt8, ImmutUntrackedOrigin]]:
-        var tag_key = _aux_tag(tag)
-        var ptr = bam_aux_get(
+        var tag_key = _aux_tag_cstr(tag)
+        var ptr = hts_mojo_bam_aux_get(
             self.ptr()
             .unsafe_mut_cast[False]()
             .unsafe_origin_cast[ImmutUntrackedOrigin](),
-            tag_key,
+            _cstr_ptr(tag_key),
         )
         if not ptr:
             return None
@@ -649,7 +657,7 @@ struct RawBamRecord(Movable):
     def aux_type(
         self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
     ) -> c_char:
-        return bam_aux_type(aux)
+        return c_char(Int(aux[0]))
 
     def aux_to_int(
         self, aux: UnsafePointer[UInt8, ImmutUntrackedOrigin]
@@ -698,16 +706,20 @@ struct RawBamRecord(Movable):
         return Float64(bam_auxB2f(aux, UInt32(index)))
 
     def set_aux_int(mut self, tag: String, value: Int64) raises:
-        var tag_key = _aux_tag(tag)
+        var tag_key = _aux_tag_cstr(tag)
         _check_zero(
-            Int(bam_aux_update_int(self.ptr(), tag_key, value)),
+            Int(hts_mojo_bam_aux_update_int(self.ptr(), _cstr_ptr(tag_key), value)),
             "failed to update integer aux tag",
         )
 
     def set_aux_float(mut self, tag: String, value: Float32) raises:
-        var tag_key = _aux_tag(tag)
+        var tag_key = _aux_tag_cstr(tag)
         _check_zero(
-            Int(bam_aux_update_float(self.ptr(), tag_key, c_float(value))),
+            Int(
+                hts_mojo_bam_aux_update_float(
+                    self.ptr(), _cstr_ptr(tag_key), c_float(value)
+                )
+            ),
             "failed to update float aux tag",
         )
 
@@ -715,13 +727,13 @@ struct RawBamRecord(Movable):
         _check_sam_text_ascii(
             value, "aux string must be ASCII SAM text without NUL bytes"
         )
-        var tag_key = _aux_tag(tag)
+        var tag_key = _aux_tag_cstr(tag)
         var value_c = value
         _check_zero(
             Int(
-                bam_aux_update_str(
+                hts_mojo_bam_aux_update_str(
                     self.ptr(),
-                    tag_key,
+                    _cstr_ptr(tag_key),
                     _check_i32(value.byte_length() + 1, "aux string too long"),
                     _cstr_ptr(value_c),
                 )
@@ -730,19 +742,11 @@ struct RawBamRecord(Movable):
         )
 
     def remove_aux(mut self, tag: String) raises -> Bool:
-        var tag_key = _aux_tag(tag)
-        var ptr = bam_aux_get(
-            self.ptr()
-            .unsafe_mut_cast[False]()
-            .unsafe_origin_cast[ImmutUntrackedOrigin](),
-            tag_key,
-        )
-        if not ptr:
+        var tag_key = _aux_tag_cstr(tag)
+        var rc = Int(hts_mojo_bam_aux_del_by_tag(self.ptr(), _cstr_ptr(tag_key)))
+        if rc == 1:
             return False
-        _check_zero(
-            Int(bam_aux_del(self.ptr(), ptr)),
-            "failed to remove aux tag",
-        )
+        _check_zero(rc, "failed to remove aux tag")
         return True
 
     def get_base4(self, i: Int) raises -> UInt8:

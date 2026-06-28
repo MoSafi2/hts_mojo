@@ -8,6 +8,7 @@ version = "0.1.0"
 [tasks]
 generate-bindings = "bash scripts/generate_bindings.sh"
 test-raw = "bash scripts/test_raw.sh"
+test-engine = "bash scripts/test_engine.sh"
 
 [dependencies]
 python = ">=3.14.6,<3.15"

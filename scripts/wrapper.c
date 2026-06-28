@@ -24,3 +24,34 @@ int hts_mojo_sam_itr_next(htsFile *fp, hts_itr_t *itr, bam1_t *b)
 {
     return sam_itr_next(fp, itr, b);
 }
+
+uint8_t *hts_mojo_bam_aux_get(const bam1_t *b, const char *tag)
+{
+    return bam_aux_get(b, tag);
+}
+
+int hts_mojo_bam_aux_update_int(bam1_t *b, const char *tag, int64_t val)
+{
+    return bam_aux_update_int(b, tag, val);
+}
+
+int hts_mojo_bam_aux_update_float(bam1_t *b, const char *tag, float val)
+{
+    return bam_aux_update_float(b, tag, val);
+}
+
+int hts_mojo_bam_aux_update_str(
+    bam1_t *b, const char *tag, int len, const char *data
+)
+{
+    return bam_aux_update_str(b, tag, len, data);
+}
+
+int hts_mojo_bam_aux_del_by_tag(bam1_t *b, const char *tag)
+{
+    uint8_t *aux = bam_aux_get(b, tag);
+    if (aux == NULL) {
+        return 1;
+    }
+    return bam_aux_del(b, aux);
+}
