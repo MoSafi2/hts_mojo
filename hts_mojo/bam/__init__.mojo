@@ -5,7 +5,7 @@ from hts_mojo.bam.header import (
     ReadGroupInfo,
     ReferenceInfo,
 )
-from hts_mojo.bam.file import RawAlignmentFile, RawHtsIndex, RawHtsIterator, Region
+from hts_mojo.bam.file import Region
 from hts_mojo.bam.readers_writer import (
     AlignmentFormat,
     BamReader,
@@ -22,7 +22,6 @@ from hts_mojo.bam.record import (
     BamRecord,
     CigarElement,
     CigarOp,
-    RawBamRecord,
     Record,
     SamFlag,
 )
