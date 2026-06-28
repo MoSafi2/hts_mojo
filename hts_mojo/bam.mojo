@@ -18,6 +18,7 @@ from hts_mojo.aln import (
     Reader as BamReader,
     Record as BamRecord,
     Region,
+    SamFlag,
     WriteOptions,
     Writer,
 )

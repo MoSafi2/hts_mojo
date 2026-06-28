@@ -18,6 +18,7 @@ from hts_mojo._engine import (
     Reader,
     Record,
     Region,
+    SamFlag,
     WriteOptions,
     Writer,
 )

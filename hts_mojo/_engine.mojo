@@ -51,6 +51,47 @@ struct CigarElement(Copyable, Movable):
     var length: UInt32
 
 
+@fieldwise_init
+struct SamFlag(Copyable, Movable):
+    var bits: UInt16
+
+    def is_paired(self) -> Bool:
+        return (self.bits & UInt16(0x1)) != 0
+
+    def is_proper_pair(self) -> Bool:
+        return (self.bits & UInt16(0x2)) != 0
+
+    def is_unmapped(self) -> Bool:
+        return (self.bits & UInt16(0x4)) != 0
+
+    def mate_is_unmapped(self) -> Bool:
+        return (self.bits & UInt16(0x8)) != 0
+
+    def is_reverse(self) -> Bool:
+        return (self.bits & UInt16(0x10)) != 0
+
+    def mate_is_reverse(self) -> Bool:
+        return (self.bits & UInt16(0x20)) != 0
+
+    def is_read1(self) -> Bool:
+        return (self.bits & UInt16(0x40)) != 0
+
+    def is_read2(self) -> Bool:
+        return (self.bits & UInt16(0x80)) != 0
+
+    def is_secondary(self) -> Bool:
+        return (self.bits & UInt16(0x100)) != 0
+
+    def is_qcfail(self) -> Bool:
+        return (self.bits & UInt16(0x200)) != 0
+
+    def is_duplicate(self) -> Bool:
+        return (self.bits & UInt16(0x400)) != 0
+
+    def is_supplementary(self) -> Bool:
+        return (self.bits & UInt16(0x800)) != 0
+
+
 comptime CIGAR_MATCH = CigarOp.Match
 comptime CIGAR_INSERTION = CigarOp.Insertion
 comptime CIGAR_DELETION = CigarOp.Deletion
@@ -138,13 +179,31 @@ struct Record(Movable):
         return result^
 
     def flag(self) -> UInt16:
+        return self.flag_bits()
+
+    def flag_bits(self) -> UInt16:
         return self._raw.flag()
 
-    def reference_id(self) -> Int32:
+    def flags(self) -> SamFlag:
+        return SamFlag(self.flag_bits())
+
+    def raw_reference_id(self) -> Int32:
         return self._raw.tid()
 
-    def reference_start(self) -> Int64:
+    def reference_id(self) -> Optional[Int32]:
+        var tid = self.raw_reference_id()
+        if tid < 0:
+            return None
+        return tid
+
+    def raw_reference_start(self) -> Int64:
         return self._raw.pos0()
+
+    def reference_start(self) -> Optional[Int64]:
+        var start0 = self.raw_reference_start()
+        if self.is_unmapped() or start0 < 0:
+            return None
+        return start0
 
     def reference_end(self) -> Optional[Int64]:
         if self.is_unmapped() or self._raw.n_cigar() == 0:
@@ -152,19 +211,32 @@ struct Record(Movable):
         return self._raw.end_pos0()
 
     def reference_length(self) -> Optional[Int64]:
+        var start = self.reference_start()
         var end = self.reference_end()
-        if not end:
+        if not start or not end:
             return None
-        return end.value() - self.reference_start()
+        return end.value() - start.value()
 
     def mapping_quality(self) -> UInt8:
         return self._raw.mapq()
 
-    def next_reference_id(self) -> Int32:
+    def raw_next_reference_id(self) -> Int32:
         return self._raw.mate_tid()
 
-    def next_reference_start(self) -> Int64:
+    def next_reference_id(self) -> Optional[Int32]:
+        var tid = self.raw_next_reference_id()
+        if self.mate_is_unmapped() or tid < 0:
+            return None
+        return tid
+
+    def raw_next_reference_start(self) -> Int64:
         return self._raw.mate_pos0()
+
+    def next_reference_start(self) -> Optional[Int64]:
+        var start0 = self.raw_next_reference_start()
+        if self.mate_is_unmapped() or start0 < 0:
+            return None
+        return start0
 
     def template_length(self) -> Int64:
         return self._raw.insert_size()
@@ -231,50 +303,49 @@ struct Record(Movable):
         return result^
 
     def is_paired(self) -> Bool:
-        return self._has_flag(UInt16(0x1))
+        return self.flags().is_paired()
 
     def is_proper_pair(self) -> Bool:
-        return self._has_flag(UInt16(0x2))
+        return self.flags().is_proper_pair()
 
     def is_unmapped(self) -> Bool:
-        return self._has_flag(UInt16(0x4))
+        return self.flags().is_unmapped()
 
     def mate_is_unmapped(self) -> Bool:
-        return self._has_flag(UInt16(0x8))
+        return self.flags().mate_is_unmapped()
 
     def is_reverse(self) -> Bool:
-        return self._has_flag(UInt16(0x10))
+        return self.flags().is_reverse()
 
     def mate_is_reverse(self) -> Bool:
-        return self._has_flag(UInt16(0x20))
+        return self.flags().mate_is_reverse()
 
     def is_read1(self) -> Bool:
-        return self._has_flag(UInt16(0x40))
+        return self.flags().is_read1()
 
     def is_read2(self) -> Bool:
-        return self._has_flag(UInt16(0x80))
+        return self.flags().is_read2()
 
     def is_secondary(self) -> Bool:
-        return self._has_flag(UInt16(0x100))
+        return self.flags().is_secondary()
 
     def is_qcfail(self) -> Bool:
-        return self._has_flag(UInt16(0x200))
+        return self.flags().is_qcfail()
 
     def is_duplicate(self) -> Bool:
-        return self._has_flag(UInt16(0x400))
+        return self.flags().is_duplicate()
 
     def is_supplementary(self) -> Bool:
-        return self._has_flag(UInt16(0x800))
-
-    def _has_flag(self, flag: UInt16) -> Bool:
-        return (self._raw.flag() & flag) != 0
+        return self.flags().is_supplementary()
 
 
+@fieldwise_init
 struct ReadOptions(Copyable, Movable):
     var reference_path: Optional[String]
     var threads: Int
 
 
+@fieldwise_init
 struct WriteOptions(Copyable, Movable):
     var reference_path: Optional[String]
     var threads: Int
@@ -321,6 +392,10 @@ struct Reader(Movable):
         path: String, reference_path: Optional[String] = None, threads: Int = 0
     ) raises -> Self:
         return Self(path, reference_path, threads)
+
+    @staticmethod
+    def open(path: String, var options: ReadOptions) raises -> Self:
+        return Self(path, options.reference_path^, options.threads)
 
     def __init__(
         out self,
@@ -384,6 +459,14 @@ struct IndexedReader(Movable):
         threads: Int = 0,
     ) raises -> Self:
         return Self(path, index_path, reference_path, threads)
+
+    @staticmethod
+    def open(
+        path: String,
+        var options: ReadOptions,
+        index_path: Optional[String] = None,
+    ) raises -> Self:
+        return Self(path, index_path, options.reference_path^, options.threads)
 
     def __init__(
         out self,
@@ -458,6 +541,10 @@ struct Writer(Movable):
         threads: Int = 0,
     ) raises -> Self:
         return Self(path, header, reference_path, threads)
+
+    @staticmethod
+    def open(path: String, header: Header, var options: WriteOptions) raises -> Self:
+        return Self(path, header, options.reference_path^, options.threads)
 
     def __init__(
         out self,
