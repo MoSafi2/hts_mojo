@@ -162,6 +162,8 @@ struct RawAlignmentFile(Movable):
             Int(hts_set_fai_filename(self.ptr(), _cstr(reference_path_c))),
             "failed to set reference FASTA",
         )
+        # TODO: Expose richer file-format option plumbing here when Mojo can call
+        # HTSlib vararg APIs such as hts_set_opt(...) safely.
 
     def read_header(mut self) raises -> RawSamHeader:
         return RawSamHeader.adopt(sam_hdr_read(self.ptr()))
@@ -298,6 +300,8 @@ struct RawSamHeader(Movable):
             ),
             "failed to append header line",
         )
+        # TODO: Add program-group helpers once Mojo can bind HTSlib vararg entry
+        # points such as sam_hdr_add_pg(...).
 
 
 struct RawBamRecord(Movable):
