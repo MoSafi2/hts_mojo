@@ -13,8 +13,12 @@ from hts_mojo._raw import (
 )
 
 
+def _terminated(text: String) -> String:
+    return text + "\0"
+
+
 def test_cstr_helper() raises:
-    var ptr = _cstr(String("hi"))
+    var ptr = _cstr(_terminated(String("hi")))
     if ptr[0] != 104 or ptr[1] != 105 or ptr[2] != 0:
         raise Error("_cstr produced unexpected bytes")
 
@@ -46,7 +50,7 @@ def _write_fixture(path: String) raises:
     var header_text = String(
         "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:1000\n"
     )
-    var header = RawSamHeader(header_text)
+    var header = RawSamHeader(_terminated(header_text))
     var file = RawSamFile(path, String("wb"))
     var header_ptr = (
         header.ptr()
@@ -58,9 +62,9 @@ def _write_fixture(path: String) raises:
         raise Error("sam_hdr_write failed")
 
     var record = RawBamRecord()
-    var qname = String("read-1")
-    var seq = String("ACGTN")
-    var qual = String('!"#$%')
+    var qname = _terminated(String("read-1"))
+    var seq = _terminated(String("ACGTN"))
+    var qual = _terminated(String('!"#$%'))
     rc = bam_set1(
         record.ptr(),
         UInt(qname.byte_length() + 1),
@@ -99,11 +103,11 @@ def test_raw_header_lifecycle() raises:
     if empty.n_ref() != 0:
         raise Error("empty header should have zero references")
 
-    var text = String("@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:1000\n")
+    var text = _terminated(String("@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:1000\n"))
     var header = RawSamHeader(text)
     if header.n_ref() != 1:
         raise Error("parsed header should have one reference")
-    if header.name2tid(String("chr1")) != 0:
+    if header.name2tid(_terminated(String("chr1"))) != 0:
         raise Error("name2tid failed")
     if header.tid2len(0) != 1000:
         raise Error("tid2len failed")
@@ -114,12 +118,12 @@ def test_raw_header_lifecycle() raises:
 
 
 def test_raw_file_lifecycle() raises:
-    var path = String("/tmp/hts_mojo_raw_lifecycle.sam")
+    var path = _terminated(String("/tmp/hts_mojo_raw_lifecycle.sam"))
     var file = RawSamFile()
     file.close()
 
-    var header = RawSamHeader(String("@HD\tVN:1.6\tSO:unsorted\n"))
-    var writer = RawSamFile(path, String("w"))
+    var header = RawSamHeader(_terminated(String("@HD\tVN:1.6\tSO:unsorted\n")))
+    var writer = RawSamFile(path, _terminated(String("w")))
     var header_ptr = (
         header.ptr()
         .unsafe_mut_cast[False]()
@@ -140,13 +144,13 @@ def test_raw_record_lifecycle() raises:
 
 
 def test_raw_file_index_and_iterator() raises:
-    var path = String("/tmp/hts_mojo_raw_test.bam")
+    var path = _terminated(String("/tmp/hts_mojo_raw_test.bam"))
     _write_fixture(path)
     RawHtsIndex.build(path)
 
-    var file = RawSamFile(path, String("rb"))
+    var file = RawSamFile(path, _terminated(String("rb")))
     var header = RawSamHeader(file)
-    if header.name2tid(String("chr1")) != 0:
+    if header.name2tid(_terminated(String("chr1"))) != 0:
         raise Error("header lookup failed")
 
     var index = RawHtsIndex(file, path)
@@ -160,7 +164,9 @@ def test_raw_file_index_and_iterator() raises:
     if rc != -1:
         raise Error("tid iterator should reach EOF")
 
-    var region_iter = RawHtsIterator(index, header, String("chr1:1-1000"))
+    var region_iter = RawHtsIterator(
+        index, header, _terminated(String("chr1:1-1000"))
+    )
     rc = region_iter.next(file, record)
     if rc < 0:
         raise Error("region iterator should return a record")
