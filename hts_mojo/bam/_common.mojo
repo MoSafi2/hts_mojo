@@ -18,7 +18,7 @@ def _ensure_nul(mut s: String):
     if s.byte_length() == 0:
         s += "\0"
         return
-    if String(s[byte=s.byte_length() - 1]) != "\0":
+    if StringSlice(s[byte=s.byte_length() - 1]) != StringSlice("\0"):
         s += "\0"
 
 
@@ -29,11 +29,10 @@ def _terminated(s: String) -> String:
 
 
 def _check_sam_text_ascii(value: String, context: String) raises:
-    for cp in value.codepoint_slices():
-        var ch = String(cp)
-        if ch == "\0":
+    for var cp in value.codepoints():
+        if not cp.is_ascii():
             raise Error(context)
-        if ch.byte_length() != 1:
+        if cp.to_u32() == 0:
             raise Error(context)
 
 
@@ -80,30 +79,6 @@ def _aux_tag_cstr(tag: String) raises -> String:
         raise Error("aux tag must be exactly two ASCII characters")
     _check_sam_text_ascii(tag, "aux tag must be exactly two ASCII characters")
     return _terminated(tag)
-
-
-struct _OwnedByteBuffer(Movable):
-    var _ptr: Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]
-
-    def __init__(out self, size: Int) raises:
-        if size <= 0:
-            self._ptr = None
-            return
-        var mem = malloc(UInt(size))
-        if not mem:
-            raise Error("failed to allocate temporary BAM buffer")
-        self._ptr = rebind[Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]](
-            mem
-        )
-        for i in range(size):
-            self._ptr.value()[i] = UInt8(0)
-
-    def __del__(deinit self):
-        if self._ptr:
-            hts_free(self._ptr.value().bitcast[NoneType]())
-
-    def ptr(self) -> Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]:
-        return self._ptr
 
 
 def _check_zero(code: Int, context: String) raises:
@@ -258,9 +233,6 @@ def _aux_value_to_string(
     return String("?")
 
 
-
-
-
 def _hex_u16(value: UInt16) -> String:
     var result = String("0x")
     result += String(_HEX_DIGITS[byte=Int((value >> 12) & UInt16(0xF))])
@@ -268,7 +240,6 @@ def _hex_u16(value: UInt16) -> String:
     result += String(_HEX_DIGITS[byte=Int((value >> 4) & UInt16(0xF))])
     result += String(_HEX_DIGITS[byte=Int(value & UInt16(0xF))])
     return result
-
 
 
 def _hex_byte(value: UInt8) -> String:
@@ -290,9 +261,6 @@ def _raw_bytes_to_hex(bytes: List[UInt8]) -> String:
         result += String(_HEX_DIGITS[byte=Int(byte >> 4)])
         result += String(_HEX_DIGITS[byte=Int(byte & UInt8(0xF))])
     return result
-
-
-
 
 
 def _split_tab_fields(line: String) -> List[String]:
