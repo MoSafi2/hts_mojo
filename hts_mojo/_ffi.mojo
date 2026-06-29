@@ -12272,5 +12272,11 @@ def hts_mojo_bam_aux_del_by_tag(b: Optional[UnsafePointer[bam1_t, MutUntrackedOr
 def hts_mojo_bam_aux_tag(s: Optional[UnsafePointer[uint8_t, ImmutUntrackedOrigin]]) abi("C") -> Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]:
     return external_call["hts_mojo_bam_aux_tag", Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], Optional[UnsafePointer[uint8_t, ImmutUntrackedOrigin]]](s)
 
+def hts_mojo_hts_set_opt_int(fp: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], opt: hts_fmt_option, value: c_int) abi("C") -> c_int:
+    return external_call["hts_mojo_hts_set_opt_int", c_int, Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], hts_fmt_option, c_int](fp, opt, value)
+
+def hts_mojo_hts_set_opt_str(fp: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], opt: hts_fmt_option, value: Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]) abi("C") -> c_int:
+    return external_call["hts_mojo_hts_set_opt_str", c_int, Optional[UnsafePointer[htsFile, MutUntrackedOrigin]], hts_fmt_option, Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]](fp, opt, value)
+
 def hts_mojo_bam_plp_init(data: Optional[UnsafePointer[hts_mojo_bam_plp_data_t, MutUntrackedOrigin]]) abi("C") -> bam_plp_t:
     return external_call["hts_mojo_bam_plp_init", bam_plp_t, Optional[UnsafePointer[hts_mojo_bam_plp_data_t, MutUntrackedOrigin]]](data)

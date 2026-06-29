@@ -3,6 +3,10 @@ from std.sys.info import size_of
 from std.testing import TestSuite
 
 from hts_mojo._ffi import hts_free, malloc, sam_hdr_read, uint32_t
+from hts_mojo._ffi import (
+    CRAM_OPT_PREFIX,
+    HTS_OPT_COMPRESSION_LEVEL,
+)
 from hts_mojo.bam._common import (
     _bytes_with_nul_ptr,
     _check_nonnegative,
@@ -90,6 +94,12 @@ def _write_bam_fixture(path: String) raises:
     _free_cigar(cigar)
 
 
+def _write_reference_fasta(path: String) raises:
+    var file = open(path, "w")
+    file.write(">chr1\nACGTACGTACGTACGT\n")
+    file.close()
+
+
 def test_cstr_helper() raises:
     var text = String("hi")
     var ptr = _cstr_ptr(text)
@@ -167,6 +177,33 @@ def test_raw_header_parse_and_append() raises:
     var dup = parsed.dup()
     if not dup.tid2name(0):
         raise Error("tid2name failed")
+
+
+def test_raw_alignment_file_set_opt_int() raises:
+    var path = String("/tmp/hts_mojo_raw_set_opt_int.bam")
+    var file = RawAlignmentFile(path, String("wb"))
+    file.set_opt_int(HTS_OPT_COMPRESSION_LEVEL, 1)
+
+    var header = RawSamHeader()
+    header.append_line(String("@HD\tVN:1.6\tSO:coordinate\n"))
+    header.append_line(String("@SQ\tSN:chr1\tLN:1000\n"))
+    file.write_header(header)
+    file.close()
+
+
+def test_raw_alignment_file_set_opt_string() raises:
+    var ref_path = String("/tmp/hts_mojo_raw_set_opt_string.fa")
+    _write_reference_fasta(ref_path)
+
+    var path = String("/tmp/hts_mojo_raw_set_opt_string.cram")
+    var file = RawAlignmentFile(path, String("wc"))
+    file.set_opt_string(CRAM_OPT_PREFIX, ref_path)
+
+    var header = RawSamHeader()
+    header.append_line(String("@HD\tVN:1.6\tSO:coordinate\n"))
+    header.append_line(String("@SQ\tSN:chr1\tLN:16\n"))
+    file.write_header(header)
+    file.close()
 
 
 def test_raw_header_adopt_and_write_to() raises:

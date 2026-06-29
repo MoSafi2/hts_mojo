@@ -14,6 +14,9 @@ from hts_mojo.bam.readers_writer import (
     Reader,
     RecordsIter,
     WriteOptions,
+    WriterIntOption,
+    WriterOptionTag,
+    WriterStringOption,
     Writer,
 )
 from hts_mojo.bam.pileup import Pileup, PileupAlignment, PileupAlignments

@@ -1,3 +1,4 @@
+from hts_mojo._ffi import hts_fmt_option
 from hts_mojo.bam.file import (
     RawAlignmentFile,
     RawHtsIndex,
@@ -47,12 +48,46 @@ struct ReadOptions(Copyable, Movable):
     var require_index: Bool
 
 
+comptime WriterOptionTag = hts_fmt_option
+
+
 @fieldwise_init
-struct WriteOptions(Copyable, Movable):
+struct WriterIntOption(Copyable, Movable):
+    var opt: WriterOptionTag
+    var value: Int
+
+
+@fieldwise_init
+struct WriterStringOption(Copyable, Movable):
+    var opt: WriterOptionTag
+    var value: String
+
+
+struct WriteOptions(Movable):
     var reference_path: Optional[String]
     var threads: Int
     var format: Optional[AlignmentFormat]
     var compression_level: Optional[Int]
+    var int_options: List[WriterIntOption]
+    var string_options: List[WriterStringOption]
+
+    def __init__(
+        out self,
+        reference_path: Optional[String],
+        threads: Int,
+        format: Optional[AlignmentFormat],
+        compression_level: Optional[Int],
+        var int_options: List[WriterIntOption] = List[WriterIntOption](),
+        var string_options: List[WriterStringOption] = List[
+            WriterStringOption
+        ](),
+    ):
+        self.reference_path = reference_path
+        self.threads = threads
+        self.format = format
+        self.compression_level = compression_level
+        self.int_options = int_options^
+        self.string_options = string_options^
 
 
 struct RecordsIter[origin: Origin](Iterator, Movable):
@@ -283,7 +318,7 @@ struct IndexedReader(Movable):
             return None
         return record^
 
-    def records(ref self) -> RecordsIter[origin_of(self)]:
+    def records(ref self) -> RecordsIter[origin_of(self._reader)]:
         return self._reader.records()
 
     def set_threads(mut self, n_threads: Int) raises:
@@ -397,14 +432,23 @@ struct Writer(Movable):
     def open(
         path: String, header: Header, var options: WriteOptions
     ) raises -> Self:
-        return Self(
+        return Self(path, header, options)
+
+    def __init__(
+        out self, path: String, header: Header, options: WriteOptions
+    ) raises:
+        self = Self(
             path,
             header,
-            options.reference_path^,
+            options.reference_path,
             options.threads,
             options.format,
             options.compression_level,
         )
+        for option in options.int_options:
+            self._file.set_opt_int(option.opt, option.value)
+        for option in options.string_options:
+            self._file.set_opt_string(option.opt, option.value)
 
     def __init__(
         out self,
@@ -414,21 +458,40 @@ struct Writer(Movable):
         threads: Int = 0,
         format: Optional[AlignmentFormat] = None,
         compression_level: Optional[Int] = None,
+        var int_options: List[WriterIntOption] = List[WriterIntOption](),
+        var string_options: List[WriterStringOption] = List[
+            WriterStringOption
+        ](),
     ) raises:
-        var mode = _writer_mode(
-            path,
-            WriteOptions(reference_path, threads, format, compression_level),
+        var options = WriteOptions(
+            reference_path,
+            threads,
+            format,
+            compression_level,
+            int_options^,
+            string_options^,
         )
+        var mode = _writer_mode(path, options)
         self._file = RawAlignmentFile(path, mode)
-        if reference_path:
-            self._file.set_reference(reference_path.value())
+        if options.reference_path:
+            self._file.set_reference(options.reference_path.value())
         if threads > 0:
             self._file.set_threads(threads)
+        for option in options.int_options:
+            self._file.set_opt_int(option.opt, option.value)
+        for option in options.string_options:
+            self._file.set_opt_string(option.opt, option.value)
         self._header = header._raw.dup()
         self._file.write_header(self._header)
 
     def write(mut self, read record: Record) raises:
         self._file.write1(self._header, record._raw)
+
+    def set_opt_int(mut self, opt: WriterOptionTag, value: Int) raises:
+        self._file.set_opt_int(opt, value)
+
+    def set_opt_string(mut self, opt: WriterOptionTag, value: String) raises:
+        self._file.set_opt_string(opt, value)
 
     def set_threads(mut self, n_threads: Int) raises:
         self._file.set_threads(n_threads)

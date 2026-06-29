@@ -42,6 +42,10 @@ int hts_mojo_bam_aux_update_str(
 );
 int hts_mojo_bam_aux_del_by_tag(bam1_t *b, const char *tag);
 const char *hts_mojo_bam_aux_tag(const uint8_t *s);
+int hts_mojo_hts_set_opt_int(htsFile *fp, enum hts_fmt_option opt, int value);
+int hts_mojo_hts_set_opt_str(
+    htsFile *fp, enum hts_fmt_option opt, const char *value
+);
 
 typedef struct hts_mojo_bam_plp_data_t {
     htsFile *fp;

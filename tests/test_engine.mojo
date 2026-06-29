@@ -14,8 +14,16 @@ from hts_mojo.bam import (
     Region,
     WriteOptions,
     Writer,
+    WriterIntOption,
+    WriterStringOption,
 )
-from hts_mojo._ffi import hts_free, malloc, uint32_t
+from hts_mojo._ffi import (
+    CRAM_OPT_PREFIX,
+    HTS_OPT_BLOCK_SIZE,
+    hts_free,
+    malloc,
+    uint32_t,
+)
 from hts_mojo.bam.file import RawHtsIndex
 
 comptime _CIGAR_M = UInt32(CigarOp.Match.value)
@@ -42,6 +50,12 @@ def _single_match_cigar(
         .unsafe_origin_cast[ImmutUntrackedOrigin]()
         .bitcast[uint32_t]()
     )
+
+
+def _write_reference_fasta(path: String) raises:
+    var file = open(path, "w")
+    file.write(">chr1\nACGTACGTACGTACGT\n")
+    file.close()
 
 
 def _free_cigar(cigar: UnsafePointer[uint32_t, ImmutUntrackedOrigin]):
@@ -554,6 +568,25 @@ def test_writer_option_validation() raises:
         String("/tmp/hts_mojo_engine_options.bam"), header, options^
     )
     writer.close()
+
+    var ref_path = String("/tmp/hts_mojo_engine_writer_opts.fa")
+    _write_reference_fasta(ref_path)
+    var int_options = List[WriterIntOption]()
+    int_options.append(WriterIntOption(HTS_OPT_BLOCK_SIZE, 32768))
+    var string_options = List[WriterStringOption]()
+    string_options.append(WriterStringOption(CRAM_OPT_PREFIX, ref_path))
+    var cram_options = WriteOptions(
+        None,
+        0,
+        AlignmentFormat.Cram,
+        None,
+        int_options^,
+        string_options^,
+    )
+    var cram_writer = Writer.open(
+        String("/tmp/hts_mojo_engine_options.cram"), header, cram_options^
+    )
+    cram_writer.close()
 
 
 def test_quality_string_parsing_e2e() raises:

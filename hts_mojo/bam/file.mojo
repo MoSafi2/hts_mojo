@@ -1,6 +1,9 @@
 from hts_mojo._ffi import (
     htsFile,
     hts_close,
+    hts_fmt_option,
+    hts_mojo_hts_set_opt_int,
+    hts_mojo_hts_set_opt_str,
     hts_open,
     hts_set_fai_filename,
     hts_set_threads,
@@ -77,8 +80,26 @@ struct RawAlignmentFile(Movable):
             Int(hts_set_fai_filename(self.ptr(), _cstr_ptr(reference_path_c))),
             "failed to set reference FASTA",
         )
-        # TODO: Expose richer file-format option plumbing here when Mojo can call
-        # HTSlib vararg APIs such as hts_set_opt(...) safely.
+
+    def set_opt_int(mut self, opt: hts_fmt_option, value: Int) raises:
+        _check_zero(
+            Int(
+                hts_mojo_hts_set_opt_int(
+                    self.ptr(),
+                    opt,
+                    _check_i32(value, "option value out of range"),
+                )
+            ),
+            "failed to set alignment option",
+        )
+
+    def set_opt_string(mut self, opt: hts_fmt_option, value: String) raises:
+        var value_c = value
+        _check_zero(
+            Int(hts_mojo_hts_set_opt_str(self.ptr(), opt, _cstr_ptr(value_c))),
+            "failed to set alignment option",
+        )
+        # Pointer-valued hts_set_opt cases still require additional shim work.
 
     def read_header(mut self) raises -> RawSamHeader:
         return RawSamHeader.adopt(sam_hdr_read(self.ptr()))

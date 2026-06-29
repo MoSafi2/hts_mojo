@@ -61,6 +61,18 @@ const char *hts_mojo_bam_aux_tag(const uint8_t *s)
     return bam_aux_tag(s);
 }
 
+int hts_mojo_hts_set_opt_int(htsFile *fp, enum hts_fmt_option opt, int value)
+{
+    return hts_set_opt(fp, opt, value);
+}
+
+int hts_mojo_hts_set_opt_str(
+    htsFile *fp, enum hts_fmt_option opt, const char *value
+)
+{
+    return hts_set_opt(fp, opt, value);
+}
+
 static int hts_mojo_bam_plp_auto_next(void *data, bam1_t *b)
 {
     hts_mojo_bam_plp_data_t *bridge = (hts_mojo_bam_plp_data_t *)data;
