@@ -4,6 +4,7 @@ from std.testing import TestSuite
 from hts_mojo.bam import (
     AlignmentFormat,
     AuxKind,
+    CigarOp,
     Header,
     IndexedReader,
     Pileup,
@@ -16,6 +17,15 @@ from hts_mojo.bam import (
 )
 from hts_mojo._ffi import hts_free, malloc, uint32_t
 from hts_mojo.bam.file import RawHtsIndex
+
+comptime _CIGAR_M = UInt32(CigarOp.Match.value)
+comptime _CIGAR_I = UInt32(CigarOp.Insertion.value)
+comptime _CIGAR_D = UInt32(CigarOp.Deletion.value)
+comptime _CIGAR_N = UInt32(CigarOp.ReferenceSkip.value)
+
+
+def _encode_cigar(length: UInt32, op: UInt32) -> UInt32:
+    return (length << 4) | op
 
 
 def _single_match_cigar(
@@ -38,6 +48,23 @@ def _free_cigar(cigar: UnsafePointer[uint32_t, ImmutUntrackedOrigin]):
     hts_free(cigar.unsafe_mut_cast[True]().bitcast[NoneType]())
 
 
+def _cigar_buffer(
+    var items: List[UInt32],
+) raises -> UnsafePointer[uint32_t, ImmutUntrackedOrigin]:
+    var mem = malloc(UInt(len(items) * 4))
+    if not mem:
+        raise Error("malloc failed")
+    var ptr = rebind[Optional[UnsafePointer[UInt32, MutUntrackedOrigin]]](mem)
+    for i in range(len(items)):
+        ptr.value()[i] = items[i]
+    return (
+        ptr.value()
+        .unsafe_mut_cast[False]()
+        .unsafe_origin_cast[ImmutUntrackedOrigin]()
+        .bitcast[uint32_t]()
+    )
+
+
 def _make_record(
     qname: String,
     flag: UInt16,
@@ -54,6 +81,40 @@ def _make_record(
     var cigar = _single_match_cigar(UInt32(seq.byte_length()))
     record._raw.set1_from_sam_fields(
         qname, flag, tid, pos0, mapq, 1, cigar, mtid, mpos0, isize, seq, qual
+    )
+    _free_cigar(cigar)
+    return record^
+
+
+def _make_record_with_cigar(
+    qname: String,
+    flag: UInt16,
+    tid: Int32,
+    pos0: Int64,
+    mapq: UInt8,
+    mtid: Int32,
+    mpos0: Int64,
+    isize: Int64,
+    var cigar_ops: List[UInt32],
+    seq: String,
+    qual: String,
+) raises -> Record:
+    var record = Record()
+    var n_cigar = len(cigar_ops)
+    var cigar = _cigar_buffer(cigar_ops^)
+    record._raw.set1_from_sam_fields(
+        qname,
+        flag,
+        tid,
+        pos0,
+        mapq,
+        UInt(n_cigar),
+        cigar,
+        mtid,
+        mpos0,
+        isize,
+        seq,
+        qual,
     )
     _free_cigar(cigar)
     return record^
@@ -106,6 +167,115 @@ def _write_fixture(path: String) raises:
         String("*****"),
     )
     writer.write(second)
+    writer.close()
+
+
+def _write_indel_fixture(path: String) raises:
+    var header = Header.empty()
+    header.add_reference(String("chr1"), 1000)
+    var writer = Writer.open(
+        path,
+        header,
+        format=AlignmentFormat.Bam,
+        compression_level=1,
+    )
+
+    var match_read = _make_record(
+        String("match-5m"),
+        UInt16(0),
+        0,
+        10,
+        60,
+        -1,
+        -1,
+        0,
+        String("AACCC"),
+        String("!!!!!"),
+    )
+    writer.write(match_read)
+
+    var deletion_ops = List[UInt32]()
+    deletion_ops.append(_encode_cigar(2, _CIGAR_M))
+    deletion_ops.append(_encode_cigar(1, _CIGAR_D))
+    deletion_ops.append(_encode_cigar(2, _CIGAR_M))
+    var deletion_read = _make_record_with_cigar(
+        String("with-del"),
+        UInt16(0),
+        0,
+        11,
+        60,
+        -1,
+        -1,
+        0,
+        deletion_ops^,
+        String("GGGG"),
+        String("####"),
+    )
+    writer.write(deletion_read)
+
+    var insertion_ops = List[UInt32]()
+    insertion_ops.append(_encode_cigar(2, _CIGAR_M))
+    insertion_ops.append(_encode_cigar(1, _CIGAR_I))
+    insertion_ops.append(_encode_cigar(2, _CIGAR_M))
+    var insertion_read = _make_record_with_cigar(
+        String("with-ins"),
+        UInt16(0),
+        0,
+        11,
+        60,
+        -1,
+        -1,
+        0,
+        insertion_ops^,
+        String("TTTTT"),
+        String("$$$$$"),
+    )
+    writer.write(insertion_read)
+    writer.close()
+
+
+def _write_refskip_fixture(path: String) raises:
+    var header = Header.empty()
+    header.add_reference(String("chr1"), 1000)
+    var writer = Writer.open(
+        path,
+        header,
+        format=AlignmentFormat.Bam,
+        compression_level=1,
+    )
+
+    var skip_ops = List[UInt32]()
+    skip_ops.append(_encode_cigar(2, _CIGAR_M))
+    skip_ops.append(_encode_cigar(3, _CIGAR_N))
+    skip_ops.append(_encode_cigar(2, _CIGAR_M))
+    var skip_read = _make_record_with_cigar(
+        String("with-skip"),
+        UInt16(0),
+        0,
+        20,
+        60,
+        -1,
+        -1,
+        0,
+        skip_ops^,
+        String("CCCC"),
+        String("++++"),
+    )
+    writer.write(skip_read)
+
+    var overlap_read = _make_record(
+        String("cover-skip"),
+        UInt16(0),
+        0,
+        22,
+        60,
+        -1,
+        -1,
+        0,
+        String("AAAAA"),
+        String(",,,,,"),
+    )
+    writer.write(overlap_read)
     writer.close()
 
 
@@ -441,6 +611,150 @@ def test_indexed_reader_pileup_regions() raises:
     if string_pileups.next():
         raise Error("string pileup should stop at region end")
     string_reader.close()
+
+
+def test_reader_pileup_indels_e2e() raises:
+    var path = String("/tmp/hts_mojo_reader_pileup_indels.bam")
+    _write_indel_fixture(path)
+
+    var reader = Reader(path)
+    var pileups = reader.pileup()
+
+    var column10 = pileups.next()
+    if not column10 or column10.value().position0() != 10:
+        raise Error("expected pileup at position 10")
+    if column10.value().depth() != 1:
+        raise Error("position 10 depth mismatch")
+
+    var column11 = pileups.next()
+    if not column11 or column11.value().position0() != 11:
+        raise Error("expected pileup at position 11")
+    if column11.value().depth() != 3:
+        raise Error("position 11 depth mismatch")
+
+    var column12 = pileups.next()
+    if not column12 or column12.value().position0() != 12:
+        raise Error("expected pileup at position 12")
+    var found_insertion = False
+    var alignments12 = column12.value().alignments()
+    while True:
+        var alignment = alignments12.next()
+        if not alignment:
+            break
+        if alignment.value().record().query_name() == "with-ins":
+            if alignment.value().indel() != 1:
+                raise Error("expected insertion marker at position 12")
+            found_insertion = True
+    if not found_insertion:
+        raise Error("missing insertion alignment in pileup")
+
+    var column13 = pileups.next()
+    if not column13 or column13.value().position0() != 13:
+        raise Error("expected pileup at position 13")
+    if column13.value().depth() != 3:
+        raise Error("position 13 depth mismatch")
+    var saw_deletion = False
+    var saw_shifted_query = False
+    var alignments13 = column13.value().alignments()
+    while True:
+        var alignment = alignments13.next()
+        if not alignment:
+            break
+        var qname = alignment.value().record().query_name()
+        if qname == "with-del":
+            if (
+                not alignment.value().is_deletion()
+                or alignment.value().query_position()
+            ):
+                raise Error("expected deletion flag at position 13")
+            saw_deletion = True
+        if qname == "with-ins":
+            if (
+                not alignment.value().query_position()
+                or alignment.value().query_position().value() != 3
+            ):
+                raise Error("insertion read should skip inserted base in qpos")
+            saw_shifted_query = True
+    if not saw_deletion:
+        raise Error("missing deletion alignment in pileup")
+    if not saw_shifted_query:
+        raise Error("missing shifted insertion query position")
+
+    var column14 = pileups.next()
+    if not column14 or column14.value().position0() != 14:
+        raise Error("expected pileup at position 14")
+    if column14.value().depth() != 3:
+        raise Error("position 14 depth mismatch")
+
+    var column15 = pileups.next()
+    if not column15 or column15.value().position0() != 15:
+        raise Error("expected pileup at position 15")
+    if column15.value().depth() != 1:
+        raise Error("position 15 depth mismatch")
+    var alignments15 = column15.value().alignments()
+    var only_alignment = alignments15.next()
+    if (
+        not only_alignment
+        or only_alignment.value().record().query_name() != "with-del"
+    ):
+        raise Error("expected deletion-carrying read at position 15")
+
+    if pileups.next():
+        raise Error("indel pileup should end after position 15")
+    reader.close()
+
+
+def test_indexed_reader_pileup_refskip_e2e() raises:
+    var path = String("/tmp/hts_mojo_indexed_reader_pileup_refskip.bam")
+    _write_refskip_fixture(path)
+    RawHtsIndex.build(path)
+
+    var reader = IndexedReader(path)
+    var pileups = reader.pileup_string(String("chr1:21-27"))
+
+    var expected_positions = List[Int64]()
+    expected_positions.append(20)
+    expected_positions.append(21)
+    expected_positions.append(22)
+    expected_positions.append(23)
+    expected_positions.append(24)
+    expected_positions.append(25)
+    expected_positions.append(26)
+
+    for pos in expected_positions:
+        var column = pileups.next()
+        if not column or column.value().position0() != pos:
+            raise Error("refskip pileup position mismatch")
+        var pileup = column.value()
+        if pos < 22:
+            if pileup.depth() != 1:
+                raise Error("leading refskip depth mismatch")
+            continue
+        if pos <= 24:
+            if pileup.depth() != 2:
+                raise Error("refskip overlap depth mismatch")
+            var saw_refskip = False
+            var alignments = pileup.alignments()
+            while True:
+                var alignment = alignments.next()
+                if not alignment:
+                    break
+                if alignment.value().record().query_name() == "with-skip":
+                    if (
+                        not alignment.value().is_refskip()
+                        or alignment.value().query_position()
+                    ):
+                        raise Error("expected refskip flag inside skipped region")
+                    saw_refskip = True
+            if not saw_refskip:
+                raise Error("missing refskip alignment in skipped region")
+            continue
+        if pileup.depth() != 2:
+            raise Error("post-refskip overlap depth mismatch")
+
+    if pileups.next():
+        raise Error("refskip pileup should end after position 26")
+    reader.close()
 
 
 def main() raises:

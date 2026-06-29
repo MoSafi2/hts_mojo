@@ -1,4 +1,5 @@
 from std.sys.info import size_of
+from std.memory import MutOpaquePointer
 
 from hts_mojo._ffi import (
     bam1_t,
@@ -6,18 +7,43 @@ from hts_mojo._ffi import (
     bam_pileup1_t,
     bam_plp_auto,
     bam_plp_destroy,
+    bam_plp_init,
     bam_plp_set_maxcnt,
     bam_plp_t,
     c_int,
     hts_free,
     hts_mojo_bam_plp_data_t,
+    hts_mojo_sam_itr_next,
     hts_mojo_bam_plp_init,
     malloc,
+    sam_read1,
 )
 from hts_mojo.bam._common import _check_nonnegative_i32
 from hts_mojo.bam.file import RawAlignmentFile, RawHtsIterator
 from hts_mojo.bam.header import RawSamHeader
 from hts_mojo.bam.record import RawBamRecord, Record
+
+
+def _pileup_read_callback(
+    data: Optional[MutOpaquePointer[MutUntrackedOrigin]],
+    b: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]],
+) abi("C") -> c_int:
+    if not data or not b:
+        return c_int(-2)
+    var bridge = rebind[
+        Optional[UnsafePointer[hts_mojo_bam_plp_data_t, MutUntrackedOrigin]]
+    ](data.value())
+    if not bridge or not bridge.value()[].fp or not bridge.value()[].hdr:
+        return c_int(-2)
+    if bridge.value()[].itr:
+        bridge.value()[].last_status = hts_mojo_sam_itr_next(
+            bridge.value()[].fp, bridge.value()[].itr, b
+        )
+        return bridge.value()[].last_status
+    bridge.value()[].last_status = sam_read1(
+        bridge.value()[].fp, bridge.value()[].hdr, b
+    )
+    return bridge.value()[].last_status
 
 
 struct PileupAlignment(Copyable, ImplicitlyCopyable, Movable):
@@ -163,7 +189,10 @@ struct Pileups(Movable):
         if self._iter:
             self._bridge.value()[].itr = self._iter.value().ptr()
 
-        self._plp = hts_mojo_bam_plp_init(self._bridge.value())
+        self._plp = bam_plp_init(
+            _pileup_read_callback,
+            self._bridge.value().bitcast[NoneType](),
+        )
         if not self._plp:
             hts_free(mem)
             self._bridge = None
