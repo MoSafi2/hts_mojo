@@ -14,6 +14,13 @@ def main() raises:
     var reader = BamReader(bam_path)
     var header = reader.header()
     print(header)
+    var saw_record = False
+    for record in reader:
+        print(record)
+        saw_record = True
+    if saw_record:
+        return
+
     var record = BamRecord()
     if not reader.read_next(record):
         print("Input contains no records")

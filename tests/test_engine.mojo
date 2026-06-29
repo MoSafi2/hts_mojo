@@ -499,6 +499,18 @@ def test_writer_and_reader_roundtrip() raises:
     if direct.query_name() != "read-1":
         raise Error("read_next query_name mismatch")
     second_reader.close()
+
+    var loop_reader = Reader.open(path)
+    var seen = 0
+    for rec in loop_reader:
+        if seen == 0 and rec.query_name() != "read-1":
+            raise Error("reader iteration first record mismatch")
+        if seen == 1 and rec.query_name() != "read-2":
+            raise Error("reader iteration second record mismatch")
+        seen += 1
+    if seen != 2:
+        raise Error("reader iteration count mismatch")
+    loop_reader.close()
     reader.close()
 
 

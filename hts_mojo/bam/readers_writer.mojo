@@ -55,14 +55,16 @@ struct WriteOptions(Copyable, Movable):
     var compression_level: Optional[Int]
 
 
-struct RecordsIter(Movable):
-    var _reader: UnsafePointer[Reader, MutUntrackedOrigin]
+struct RecordsIter[origin: Origin](Iterator, Movable):
+    var _reader: Pointer[Reader, Self.origin]
     var _iter: Optional[RawHtsIterator]
-    var _cached: Optional[RawBamRecord]
+    var _cached: Optional[Record]
+
+    comptime Element = Record
 
     def __init__(
         out self,
-        reader: UnsafePointer[Reader, MutUntrackedOrigin],
+        reader: Pointer[Reader, Self.origin],
         var iter: Optional[RawHtsIterator] = None,
     ):
         self._reader = reader
@@ -70,22 +72,20 @@ struct RecordsIter(Movable):
         self._cached = None
 
     def read_into(mut self, mut record: Record) raises -> Bool:
+        var reader = rebind[Pointer[Reader, MutUntrackedOrigin]](self._reader)
         if self._cached:
-            var cached = self._cached^
-            self._cached = None
-            record._raw.copy_from(cached.value())
+            var cached = self._cached.take()
+            record._raw.copy_from(cached._raw)
             return True
         if self._iter:
-            var rc = self._iter.value().next_status(
-                self._reader[]._file, record._raw
-            )
+            var rc = self._iter.value().next_status(reader[]._file, record._raw)
             if rc >= 0:
                 return True
             if rc == -1:
                 return False
             raise Error("failed to read indexed alignment record")
 
-        return self._reader[].read_into(record)
+        return reader[].read_into(record)
 
     def next(mut self) raises -> Optional[Record]:
         var record = Record()
@@ -93,26 +93,40 @@ struct RecordsIter(Movable):
             return None
         return record^
 
+    def __next__(mut self) raises StopIteration -> Self.Element:
+        try:
+            if not self.has_next():
+                raise StopIteration()
+        except Error:
+            print(String(Error))
+            raise StopIteration()
+        var record = self._cached.take()
+        return record^
+
+    def __has_next__(mut self) -> Bool:
+        try:
+            return self.has_next()
+        except Error:
+            print(String(Error))
+            return False
+
     def has_next(mut self) raises -> Bool:
+        var reader = rebind[Pointer[Reader, MutUntrackedOrigin]](self._reader)
         if self._cached:
             return True
-        var raw_record = RawBamRecord()
+        var record = Record()
         if self._iter:
-            var rc = self._iter.value().next_status(
-                self._reader[]._file, raw_record
-            )
+            var rc = self._iter.value().next_status(reader[]._file, record._raw)
             if rc >= 0:
-                self._cached = raw_record^
+                self._cached = record^
                 return True
             if rc == -1:
                 return False
             raise Error("failed to read indexed alignment record")
 
-        var rc = self._reader[]._file.read1_status(
-            self._reader[]._header, raw_record
-        )
+        var rc = reader[]._file.read1_status(reader[]._header, record._raw)
         if rc >= 0:
-            self._cached = raw_record^
+            self._cached = record^
             return True
         if rc == -1:
             return False
@@ -201,26 +215,22 @@ struct IndexedReader(Movable):
     def header(self) raises -> Header:
         return self._reader.header()
 
-    def fetch(mut self, region: Region) raises -> RecordsIter:
+    def fetch(ref self, region: Region) raises -> RecordsIter[origin_of(self._reader)]:
         if not self._index:
             raise Error("alignment index is unavailable")
         var tid = self.header().require_tid(region.contig)
         return RecordsIter(
-            UnsafePointer(to=self._reader).unsafe_origin_cast[
-                MutUntrackedOrigin
-            ](),
+            Pointer(to=self._reader),
             RawHtsIterator.queryi(
                 self._index.value(), tid, region.start0, region.end0
             ),
         )
 
-    def fetch_string(mut self, region: String) raises -> RecordsIter:
+    def fetch_string(ref self, region: String) raises -> RecordsIter[origin_of(self._reader)]:
         if not self._index:
             raise Error("alignment index is unavailable")
         return RecordsIter(
-            UnsafePointer(to=self._reader).unsafe_origin_cast[
-                MutUntrackedOrigin
-            ](),
+            Pointer(to=self._reader),
             RawHtsIterator.querys(
                 self._index.value(), self._reader._header, region
             ),
@@ -269,7 +279,7 @@ struct IndexedReader(Movable):
             return None
         return record^
 
-    def records(mut self) -> RecordsIter:
+    def records(ref self) -> RecordsIter[origin_of(self)]:
         return self._reader.records()
 
     def set_threads(mut self, n_threads: Int) raises:
@@ -282,9 +292,13 @@ struct IndexedReader(Movable):
         self._reader.close()
 
 
-struct Reader(Movable):
+struct Reader(Iterable, Movable):
     var _file: RawAlignmentFile
     var _header: RawSamHeader
+
+    comptime IteratorType[
+        iterable_mut: Bool, //, iterable_origin: Origin[mut=iterable_mut]
+    ]: Iterator = RecordsIter[iterable_origin]
 
     @staticmethod
     def open(
@@ -331,10 +345,11 @@ struct Reader(Movable):
             return None
         return record^
 
-    def records(mut self) -> RecordsIter:
-        return RecordsIter(
-            UnsafePointer(to=self).unsafe_origin_cast[MutUntrackedOrigin]()
-        )
+    def __iter__(ref self) -> Self.IteratorType[origin_of(self)]:
+        return self.records()
+
+    def records(ref self) -> RecordsIter[origin_of(self)]:
+        return RecordsIter(Pointer(to=self))
 
     def pileup(mut self, max_depth: Optional[Int] = None) raises -> Pileups:
         return Pileups.from_reader(self._file, self._header, max_depth)
