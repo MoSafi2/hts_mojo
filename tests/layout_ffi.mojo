@@ -4,7 +4,7 @@
 from std.testing import TestSuite
 from std.sys.info import align_of, size_of
 from std.reflection import reflect
-from _ffi.mojo import max_align_t, __fsid_t, imaxdiv_t, div_t, ldiv_t, lldiv_t, __sigset_t, timeval, timespec, fd_set, atomic_wide_counter__anon_struct_1, __pthread_internal_list, __pthread_internal_slist, __pthread_mutex_s, __pthread_rwlock_arch_t, __pthread_cond_s, __once_flag, random_data, drand48_data, __locale_struct, __mbstate_t, _G_fpos_t, _G_fpos64_t, _IO_FILE, _IO_cookie_io_functions_t, kstring_t, ks_tokaux_t, htsFormat__anon_struct_1, htsFormat, htsFile, htsThreadPool, hts_opt, hts_pair_pos_t, hts_pair64_t, hts_pair64_max_t, hts_reglist_t, hts_itr_t__anon_struct_1, hts_itr_t, probaln_par_t, bcf_hrec_t, bcf_idinfo_t, bcf_idpair_t, bcf_hdr_t, bcf_variant_t, bcf_fmt_t, bcf_info_t, bcf_dec_t, bcf1_t, sam_hdr_t, bam1_core_t, bam1_t, bam_pileup1_t, hts_base_mod, hFILE, cram_method_details, BGZF, tbx_conf_t, tbx_t, bcf_sr_regions_t, bcf_sr_t, bcf_srs_t, kbitset_t, kbitset_iter_t
+from _ffi.mojo import max_align_t, __fsid_t, imaxdiv_t, div_t, ldiv_t, lldiv_t, __sigset_t, timeval, timespec, fd_set, atomic_wide_counter__anon_struct_1, __pthread_internal_list, __pthread_internal_slist, __pthread_mutex_s, __pthread_rwlock_arch_t, __pthread_cond_s, __once_flag, random_data, drand48_data, __locale_struct, __mbstate_t, _G_fpos_t, _G_fpos64_t, _IO_FILE, _IO_cookie_io_functions_t, kstring_t, ks_tokaux_t, htsFormat__anon_struct_1, htsFormat, htsFile, htsThreadPool, hts_opt, hts_pair_pos_t, hts_pair64_t, hts_pair64_max_t, hts_reglist_t, hts_itr_t__anon_struct_1, hts_itr_t, probaln_par_t, bcf_hrec_t, bcf_idinfo_t, bcf_idpair_t, bcf_hdr_t, bcf_variant_t, bcf_fmt_t, bcf_info_t, bcf_dec_t, bcf1_t, sam_hdr_t, bam1_core_t, bam1_t, bam_pileup1_t, hts_base_mod, hFILE, cram_method_details, BGZF, tbx_conf_t, tbx_t, bcf_sr_regions_t, bcf_sr_t, bcf_srs_t, kbitset_t, kbitset_iter_t, hts_mojo_bam_plp_data_t
 
 
 def _check_eq(label: String, got: Int, expected: Int) raises:
@@ -782,6 +782,16 @@ def test_layout_kbitset_iter_t() raises:
     _check_eq("kbitset_iter_t.mask.offset", Int(r.field_offset[index=0]()), 0)
     _check_eq("kbitset_iter_t.elt.offset", Int(r.field_offset[index=1]()), 8)
     _check_eq("kbitset_iter_t.i.offset", Int(r.field_offset[index=2]()), 16)
+
+
+def test_layout_hts_mojo_bam_plp_data_t() raises:
+    comptime r = reflect[hts_mojo_bam_plp_data_t]
+    _check_eq("hts_mojo_bam_plp_data_t.size", Int(size_of[hts_mojo_bam_plp_data_t]()), 32)
+    _check_eq("hts_mojo_bam_plp_data_t.align", Int(align_of[hts_mojo_bam_plp_data_t]()), 8)
+    _check_eq("hts_mojo_bam_plp_data_t.fp.offset", Int(r.field_offset[index=0]()), 0)
+    _check_eq("hts_mojo_bam_plp_data_t.hdr.offset", Int(r.field_offset[index=1]()), 8)
+    _check_eq("hts_mojo_bam_plp_data_t.itr.offset", Int(r.field_offset[index=2]()), 16)
+    _check_eq("hts_mojo_bam_plp_data_t.last_status.offset", Int(r.field_offset[index=3]()), 24)
 
 
 def main() raises:

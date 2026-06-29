@@ -1081,6 +1081,16 @@ struct RawBamRecord(Movable):
         result._ptr = _check_ptr(ptr, "failed to duplicate alignment record")
         return result^
 
+    @staticmethod
+    def adopt(
+        ptr: Optional[UnsafePointer[bam1_t, MutUntrackedOrigin]]
+    ) raises -> Self:
+        var result = Self()
+        if result._ptr:
+            bam_destroy1(result._ptr.value())
+        result._ptr = _check_ptr(ptr, "failed to adopt alignment record")
+        return result^
+
     def _data_ptr(self) -> Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]:
         return self.unsafe_ptr_unchecked()[].data
 

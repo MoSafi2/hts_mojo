@@ -1,5 +1,6 @@
 from hts_mojo.bam.file import RawAlignmentFile, RawHtsIndex, RawHtsIterator, Region
 from hts_mojo.bam.header import Header, RawSamHeader
+from hts_mojo.bam.pileup import Pileups
 from hts_mojo.bam.record import RawBamRecord, Record
 
 def _writer_mode(path: String, options: WriteOptions) raises -> String:
@@ -222,6 +223,40 @@ struct IndexedReader(Movable):
     def read_into(mut self, mut record: Record) raises -> Bool:
         return self._reader.read_into(record)
 
+    def pileup(mut self, max_depth: Optional[Int] = None) raises -> Pileups:
+        return Pileups.from_reader(
+            self._reader._file, self._reader._header, max_depth
+        )
+
+    def pileup_region(
+        mut self, region: Region, max_depth: Optional[Int] = None
+    ) raises -> Pileups:
+        if not self._index:
+            raise Error("alignment index is unavailable")
+        var tid = self._reader.header().require_tid(region.contig)
+        return Pileups.from_reader(
+            self._reader._file,
+            self._reader._header,
+            max_depth,
+            RawHtsIterator.queryi(
+                self._index.value(), tid, region.start0, region.end0
+            ),
+        )
+
+    def pileup_string(
+        mut self, region: String, max_depth: Optional[Int] = None
+    ) raises -> Pileups:
+        if not self._index:
+            raise Error("alignment index is unavailable")
+        return Pileups.from_reader(
+            self._reader._file,
+            self._reader._header,
+            max_depth,
+            RawHtsIterator.querys(
+                self._index.value(), self._reader._header, region
+            ),
+        )
+
     def next(mut self) raises -> Optional[Record]:
         var record = Record()
         if not self.read_into(record):
@@ -294,6 +329,9 @@ struct Reader(Movable):
         return RecordsIter(
             UnsafePointer(to=self).unsafe_origin_cast[MutUntrackedOrigin]()
         )
+
+    def pileup(mut self, max_depth: Optional[Int] = None) raises -> Pileups:
+        return Pileups.from_reader(self._file, self._header, max_depth)
 
     def set_threads(mut self, n_threads: Int) raises:
         self._file.set_threads(n_threads)

@@ -16,6 +16,7 @@ from hts_mojo.bam.readers_writer import (
     WriteOptions,
     Writer,
 )
+from hts_mojo.bam.pileup import Pileup, PileupAlignment, PileupAlignments
 from hts_mojo.bam.record import (
     AuxKind,
     AuxValue,

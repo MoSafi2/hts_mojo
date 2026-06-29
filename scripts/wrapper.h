@@ -42,3 +42,12 @@ int hts_mojo_bam_aux_update_str(
 );
 int hts_mojo_bam_aux_del_by_tag(bam1_t *b, const char *tag);
 const char *hts_mojo_bam_aux_tag(const uint8_t *s);
+
+typedef struct hts_mojo_bam_plp_data_t {
+    htsFile *fp;
+    sam_hdr_t *hdr;
+    hts_itr_t *itr;
+    int last_status;
+} hts_mojo_bam_plp_data_t;
+
+bam_plp_t hts_mojo_bam_plp_init(hts_mojo_bam_plp_data_t *data);

@@ -5298,6 +5298,14 @@ struct hts_tpool_process(Copyable, Movable):
 struct hts_tpool_result(Copyable, Movable):
     pass
 
+@align(8)
+@fieldwise_init
+struct hts_mojo_bam_plp_data_t(RegisterPassable, Copyable, Movable):
+    var fp: Optional[UnsafePointer[htsFile, MutUntrackedOrigin]]
+    var hdr: Optional[UnsafePointer[sam_hdr_t, MutUntrackedOrigin]]
+    var itr: Optional[UnsafePointer[hts_itr_t, MutUntrackedOrigin]]
+    var last_status: c_int
+
 # Selected log level.
 # /*!
 #  * One of the HTS_LOG_* values. The default is HTS_LOG_WARNING.
@@ -12263,3 +12271,6 @@ def hts_mojo_bam_aux_del_by_tag(b: Optional[UnsafePointer[bam1_t, MutUntrackedOr
 
 def hts_mojo_bam_aux_tag(s: Optional[UnsafePointer[uint8_t, ImmutUntrackedOrigin]]) abi("C") -> Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]]:
     return external_call["hts_mojo_bam_aux_tag", Optional[UnsafePointer[c_char, ImmutUntrackedOrigin]], Optional[UnsafePointer[uint8_t, ImmutUntrackedOrigin]]](s)
+
+def hts_mojo_bam_plp_init(data: Optional[UnsafePointer[hts_mojo_bam_plp_data_t, MutUntrackedOrigin]]) abi("C") -> bam_plp_t:
+    return external_call["hts_mojo_bam_plp_init", bam_plp_t, Optional[UnsafePointer[hts_mojo_bam_plp_data_t, MutUntrackedOrigin]]](data)

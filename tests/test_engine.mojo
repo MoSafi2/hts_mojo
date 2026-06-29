@@ -6,6 +6,7 @@ from hts_mojo.bam import (
     AuxKind,
     Header,
     IndexedReader,
+    Pileup,
     ReadOptions,
     Reader,
     Record,
@@ -258,6 +259,37 @@ def test_record_accessors_and_aux() raises:
         raise Error("clone should preserve record content")
 
 
+def _expect_single_alignment(
+    pileup: Pileup,
+    expected_query_pos: Int32,
+    expect_head: Bool,
+    expect_tail: Bool,
+) raises:
+    if pileup.depth() != 1:
+        raise Error("pileup depth mismatch")
+    var alignments = pileup.alignments()
+    var first = alignments.next()
+    if not first:
+        raise Error("expected one pileup alignment")
+    var alignment = first.value()
+    if not alignment.query_position():
+        raise Error("expected query position")
+    if alignment.query_position().value() != expected_query_pos:
+        raise Error("pileup query position mismatch")
+    if alignment.is_head() != expect_head:
+        raise Error("pileup is_head mismatch")
+    if alignment.is_tail() != expect_tail:
+        raise Error("pileup is_tail mismatch")
+    if alignment.is_deletion():
+        raise Error("pileup alignment should not be a deletion")
+    if alignment.is_refskip():
+        raise Error("pileup alignment should not be a refskip")
+    if alignment.record().query_name() != "read-1":
+        raise Error("pileup alignment record mismatch")
+    if alignments.next():
+        raise Error("expected exactly one pileup alignment")
+
+
 def test_writer_and_reader_roundtrip() raises:
     var path = String("/tmp/hts_mojo_engine_roundtrip.bam")
     _write_fixture(path)
@@ -340,6 +372,75 @@ def test_writer_option_validation() raises:
         String("/tmp/hts_mojo_engine_options.bam"), header, options^
     )
     writer.close()
+
+
+def test_reader_pileup() raises:
+    var path = String("/tmp/hts_mojo_reader_pileup.bam")
+    _write_fixture(path)
+
+    var reader = Reader(path)
+    var pileups = reader.pileup()
+
+    for i in range(5):
+        var column = pileups.next()
+        if not column:
+            raise Error("expected pileup column")
+        var pileup = column.value()
+        if pileup.reference_id() != 0:
+            raise Error("pileup tid mismatch")
+        if (
+            pileup.position0() != Int64(10 + i)
+            or pileup.position1() != Int64(11 + i)
+        ):
+            raise Error("pileup position mismatch")
+        _expect_single_alignment(pileup, Int32(i), i == 0, i == 4)
+
+    if pileups.next():
+        raise Error("pileup should end after covered positions")
+    reader.close()
+
+    var limited_reader = Reader(path)
+    var limited = limited_reader.pileup(1)
+    if not limited.next():
+        raise Error("pileup with max_depth should still yield data")
+    limited_reader.close()
+
+    var invalid_reader = Reader(path)
+    try:
+        _ = invalid_reader.pileup(-1)
+    except e:
+        invalid_reader.close()
+        return
+    invalid_reader.close()
+    raise Error("pileup should reject negative max_depth")
+
+
+def test_indexed_reader_pileup_regions() raises:
+    var path = String("/tmp/hts_mojo_indexed_reader_pileup.bam")
+    _write_fixture(path)
+    RawHtsIndex.build(path)
+
+    var reader = IndexedReader(path)
+    var region_pileups = reader.pileup_region(
+        Region.zero_based(String("chr1"), 10, 15)
+    )
+    for i in range(5):
+        var column = region_pileups.next()
+        if not column or column.value().position0() != Int64(10 + i):
+            raise Error("region pileup mismatch")
+    if region_pileups.next():
+        raise Error("region pileup should stop at region end")
+    reader.close()
+
+    var string_reader = IndexedReader(path)
+    var string_pileups = string_reader.pileup_string(String("chr1:11-15"))
+    for i in range(5):
+        var column = string_pileups.next()
+        if not column or column.value().position0() != Int64(10 + i):
+            raise Error("string pileup mismatch")
+    if string_pileups.next():
+        raise Error("string pileup should stop at region end")
+    string_reader.close()
 
 
 def main() raises:

@@ -60,3 +60,27 @@ const char *hts_mojo_bam_aux_tag(const uint8_t *s)
 {
     return bam_aux_tag(s);
 }
+
+static int hts_mojo_bam_plp_auto_next(void *data, bam1_t *b)
+{
+    hts_mojo_bam_plp_data_t *bridge = (hts_mojo_bam_plp_data_t *)data;
+    if (bridge == NULL || bridge->fp == NULL || bridge->hdr == NULL) {
+        return -2;
+    }
+
+    if (bridge->itr != NULL) {
+        bridge->last_status = sam_itr_next(bridge->fp, bridge->itr, b);
+        return bridge->last_status;
+    }
+
+    bridge->last_status = sam_read1(bridge->fp, bridge->hdr, b);
+    return bridge->last_status;
+}
+
+bam_plp_t hts_mojo_bam_plp_init(hts_mojo_bam_plp_data_t *data)
+{
+    if (data != NULL) {
+        data->last_status = 0;
+    }
+    return bam_plp_init(hts_mojo_bam_plp_auto_next, data);
+}
