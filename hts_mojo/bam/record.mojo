@@ -25,6 +25,7 @@ from hts_mojo._ffi import (
     bam_destroy1,
     bam_dup1,
     bam_endpos,
+    hts_free,
     bam_init1,
     bam_set1,
     c_float,
@@ -33,6 +34,7 @@ from hts_mojo._ffi import (
     hts_mojo_bam_aux_update_float,
     hts_mojo_bam_aux_update_int,
     hts_mojo_bam_aux_update_str,
+    malloc,
     uint32_t,
 )
 
@@ -43,7 +45,6 @@ from hts_mojo.bam._common import (
     _check_nonnegative,
     _check_ptr,
     _aux_tag_cstr,
-    _OwnedByteBuffer,
     _check_i32,
     _bytes_with_nul_ptr,
     _ensure_nul,
@@ -799,14 +800,21 @@ struct RawBamRecord(Movable):
 
         var seq_len = Int(seq.byte_length())
         var seq_c = seq
-        var encoded_qual = _OwnedByteBuffer(seq_len)
-        if seq_len > 0 and not encoded_qual.ptr():
-            raise Error("failed to allocate temporary quality buffer")
+        var encoded_qual: Optional[UnsafePointer[UInt8, MutUntrackedOrigin]] = (
+            None
+        )
+        if seq_len > 0:
+            var qual_mem = malloc(UInt(seq_len))
+            if not qual_mem:
+                raise Error("failed to allocate temporary quality buffer")
+            encoded_qual = rebind[
+                Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]
+            ](qual_mem)
 
         if seq_len > 0:
             if missing_qual:
                 for i in range(seq_len):
-                    encoded_qual.ptr().value()[i] = UInt8(0xFF)
+                    encoded_qual.value()[i] = UInt8(0xFF)
             else:
                 var qual_c = qual
                 var qual_bytes = _bytes_with_nul_ptr(qual_c)
@@ -816,7 +824,7 @@ struct RawBamRecord(Movable):
                         raise Error(
                             "quality string must use SAM ASCII with +33 offset"
                         )
-                    encoded_qual.ptr().value()[i] = phred_ascii - UInt8(33)
+                    encoded_qual.value()[i] = phred_ascii - UInt8(33)
 
         var qname_c = qname
         _ensure_nul(qname_c)
@@ -825,8 +833,7 @@ struct RawBamRecord(Movable):
         ].unsafe_dangling()
         if seq_len > 0:
             qual_ptr = (
-                encoded_qual.ptr()
-                .value()
+                encoded_qual.value()
                 .unsafe_mut_cast[False]()
                 .unsafe_origin_cast[ImmutUntrackedOrigin]()
                 .bitcast[c_char]()
@@ -848,6 +855,8 @@ struct RawBamRecord(Movable):
             qual_ptr,
             l_aux,
         )
+        if encoded_qual:
+            hts_free(encoded_qual.value().bitcast[NoneType]())
 
     def raw_core_ptr(self) -> UnsafePointer[bam1_core_t, MutUntrackedOrigin]:
         return UnsafePointer(

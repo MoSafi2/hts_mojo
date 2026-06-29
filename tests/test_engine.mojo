@@ -544,6 +544,93 @@ def test_writer_option_validation() raises:
     writer.close()
 
 
+def test_quality_string_parsing_e2e() raises:
+    var sam_path = String("/tmp/hts_mojo_quality_parse.sam")
+    var bam_path = String("/tmp/hts_mojo_quality_parse.bam")
+    var quality_text = String("!5I~")
+    var expected = List[UInt8]()
+    expected.append(0)
+    expected.append(20)
+    expected.append(40)
+    expected.append(93)
+    var sam_file = open(sam_path, "w")
+    sam_file.write(
+        "@HD\tVN:1.6\tSO:unknown\n"
+        "@SQ\tSN:chr1\tLN:1000\n"
+        "quality-read\t0\tchr1\t31\t50\t4M\t*\t0\t0\tACGT\t"
+        + quality_text
+        + "\n"
+    )
+    sam_file.close()
+
+    var sam_reader = Reader(sam_path)
+    var parsed = sam_reader.next()
+    if not parsed:
+        raise Error("expected parsed SAM record")
+    if parsed.value().query_name() != "quality-read":
+        raise Error("quality parse query_name mismatch")
+    var sam_qualities = parsed.value().query_qualities()
+    if len(sam_qualities) != len(expected):
+        raise Error("SAM quality parse length mismatch")
+    for i in range(len(expected)):
+        if sam_qualities[i] != expected[i]:
+            raise Error("SAM quality parse value mismatch")
+    if sam_reader.next():
+        raise Error("expected one parsed SAM quality record")
+
+    var bam_writer = Writer.open(
+        bam_path, sam_reader.header(), format=AlignmentFormat.Bam
+    )
+    bam_writer.write(parsed.value())
+    bam_writer.close()
+    sam_reader.close()
+
+    var bam_reader = Reader(bam_path)
+    var bam_parsed = bam_reader.next()
+    if not bam_parsed:
+        raise Error("expected parsed BAM record")
+    var bam_qualities = bam_parsed.value().query_qualities()
+    if len(bam_qualities) != len(expected):
+        raise Error("BAM quality parse length mismatch")
+    for i in range(len(expected)):
+        if bam_qualities[i] != expected[i]:
+            raise Error("BAM quality parse value mismatch")
+    if bam_reader.next():
+        raise Error("expected one parsed BAM quality record")
+    bam_reader.close()
+
+
+def test_record_construction_helper_quality_string() raises:
+    var expected = List[UInt8]()
+    expected.append(0)
+    expected.append(20)
+    expected.append(40)
+    expected.append(93)
+
+    var record = _make_record(
+        String("quality-helper"),
+        UInt16(0),
+        0,
+        30,
+        50,
+        -1,
+        -1,
+        0,
+        String("ACGT"),
+        String("!5I~"),
+    )
+    if record.query_name() != "quality-helper":
+        raise Error("helper quality query_name mismatch")
+    if record.query_sequence() != "ACGT":
+        raise Error("helper quality sequence mismatch")
+    var qualities = record.query_qualities()
+    if len(qualities) != len(expected):
+        raise Error("helper quality length mismatch")
+    for i in range(len(expected)):
+        if qualities[i] != expected[i]:
+            raise Error("helper quality value mismatch")
+
+
 def test_reader_pileup() raises:
     var path = String("/tmp/hts_mojo_reader_pileup.bam")
     _write_fixture(path)
