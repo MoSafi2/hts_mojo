@@ -1,6 +1,7 @@
 from std.sys import argv
 
 from hts_mojo._ffi import hts_free, malloc, uint32_t
+from hts_mojo.bam._common import _cstr_ptr
 from hts_mojo.bam import AlignmentFormat, BamReader, Header, Record, Writer
 
 
@@ -38,8 +39,25 @@ def _make_record(
 ) raises -> Record:
     var record = Record()
     var cigar = _single_match_cigar(UInt32(seq.byte_length()))
-    record._raw.set1_from_sam_fields(
-        qname, flag, tid, pos0, mapq, 1, cigar, mtid, mpos0, isize, seq, qual
+    var qname_c = qname
+    var seq_c = seq
+    var qual_c = qual
+    record._raw.set1(
+        UInt(qname_c.byte_length() + 1),
+        _cstr_ptr(qname_c),
+        flag,
+        tid,
+        pos0,
+        mapq,
+        1,
+        cigar,
+        mtid,
+        mpos0,
+        isize,
+        UInt(seq_c.byte_length()),
+        _cstr_ptr(seq_c),
+        _cstr_ptr(qual_c),
+        0,
     )
     _free_cigar(cigar)
     return record^
@@ -128,9 +146,3 @@ def main() raises:
     for record in bam_reader:
         print(record)
     bam_reader.close()
-
-    var sam_reader = BamReader(sam_path)
-    print(sam_reader.header())
-    for record in sam_reader:
-        print(record)
-    sam_reader.close()
