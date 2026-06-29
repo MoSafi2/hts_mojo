@@ -532,8 +532,6 @@ struct Record(Movable, Writable):
             self.template_length(),
             ", aux=",
             self._aux_summary(),
-            ", raw=",
-            _raw_bytes_to_hex(self._raw_bytes()),
             ", cigar=",
             self._cigar_string_or_default(),
             ", seq=",

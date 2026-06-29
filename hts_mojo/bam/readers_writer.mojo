@@ -1,7 +1,13 @@
-from hts_mojo.bam.file import RawAlignmentFile, RawHtsIndex, RawHtsIterator, Region
+from hts_mojo.bam.file import (
+    RawAlignmentFile,
+    RawHtsIndex,
+    RawHtsIterator,
+    Region,
+)
 from hts_mojo.bam.header import Header, RawSamHeader
 from hts_mojo.bam.pileup import Pileups
 from hts_mojo.bam.record import RawBamRecord, Record
+
 
 def _writer_mode(path: String, options: WriteOptions) raises -> String:
     var mode = String("w")
