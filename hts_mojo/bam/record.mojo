@@ -1,16 +1,4 @@
-from hts_mojo._ffi import (
-    bam_aux2A,
-    bam_aux2Z,
-    bam_aux2f,
-    bam_aux2i,
-    bam_auxB2f,
-    bam_auxB2i,
-    bam_auxB_len,
-)
-
-
-from std.ffi import c_char
-
+from std.ffi import c_char, c_float
 from hts_mojo._ffi import (
     bam1_core_t,
     bam1_t,
@@ -28,7 +16,6 @@ from hts_mojo._ffi import (
     hts_free,
     bam_init1,
     bam_set1,
-    c_float,
     hts_mojo_bam_aux_del_by_tag,
     hts_mojo_bam_aux_get,
     hts_mojo_bam_aux_update_float,
@@ -800,9 +787,9 @@ struct RawBamRecord(Movable):
 
         var seq_len = Int(seq.byte_length())
         var seq_c = seq
-        var encoded_qual: Optional[UnsafePointer[UInt8, MutUntrackedOrigin]] = (
-            None
-        )
+        var encoded_qual: Optional[
+            UnsafePointer[UInt8, MutUntrackedOrigin]
+        ] = None
         if seq_len > 0:
             var qual_mem = malloc(UInt(seq_len))
             if not qual_mem:
