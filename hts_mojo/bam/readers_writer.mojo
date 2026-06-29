@@ -215,7 +215,9 @@ struct IndexedReader(Movable):
     def header(self) raises -> Header:
         return self._reader.header()
 
-    def fetch(ref self, region: Region) raises -> RecordsIter[origin_of(self._reader)]:
+    def fetch(
+        ref self, region: Region
+    ) raises -> RecordsIter[origin_of(self._reader)]:
         if not self._index:
             raise Error("alignment index is unavailable")
         var tid = self.header().require_tid(region.contig)
@@ -226,7 +228,9 @@ struct IndexedReader(Movable):
             ),
         )
 
-    def fetch_string(ref self, region: String) raises -> RecordsIter[origin_of(self._reader)]:
+    def fetch_string(
+        ref self, region: String
+    ) raises -> RecordsIter[origin_of(self._reader)]:
         if not self._index:
             raise Error("alignment index is unavailable")
         return RecordsIter(
