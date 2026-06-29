@@ -1,7 +1,7 @@
 from std.sys import argv
 
 from hts_mojo._ffi import hts_free, malloc, uint32_t
-from hts_mojo.bam import AlignmentFormat, Header, Record, Writer
+from hts_mojo.bam import AlignmentFormat, BamReader, Header, Record, Writer
 
 
 def _single_match_cigar(
@@ -58,22 +58,7 @@ def _build_header() raises -> Header:
     return header^
 
 
-def main() raises:
-    var args = argv()
-    if len(args) == 0:
-        raise Error(
-            "usage: mojo run examples/write_synthetic_bam.mojo <output.bam>"
-        )
-
-    var output_path = String(args[len(args) - 1])
-    var header = _build_header()
-    var writer = Writer.open(
-        output_path,
-        header,
-        format=AlignmentFormat.Bam,
-        compression_level=1,
-    )
-
+def _write_records(mut writer: Writer) raises:
     var first = _make_record(
         String("synthetic-1"),
         UInt16(0),
@@ -105,6 +90,47 @@ def main() raises:
     second.set_aux_float(String("AS"), Float32(12.5))
     second.set_aux_string(String("RG"), String("rg1"))
     writer.write(second)
-    writer.close()
+
+
+def main() raises:
+    var args = argv()
+    if len(args) < 2:
+        raise Error(
+            "usage: mojo run examples/write_synthetic_bam.mojo <output.bam>"
+        )
+
+    var output_path = String(args[len(args) - 1])
+    var header = _build_header()
+    var bam_writer = Writer.open(
+        output_path,
+        header.clone(),
+        format=AlignmentFormat.Bam,
+        compression_level=1,
+    )
+    _write_records(bam_writer)
+    bam_writer.close()
 
     print("Wrote 2 synthetic BAM records to ", output_path)
+
+    var sam_path = output_path + String(".sam")
+    var sam_writer = Writer.open(
+        sam_path,
+        header,
+        format=AlignmentFormat.Sam,
+    )
+    _write_records(sam_writer)
+    sam_writer.close()
+
+    print("Wrote 2 synthetic SAM records to ", sam_path)
+
+    var bam_reader = BamReader(output_path)
+    print(bam_reader.header())
+    for record in bam_reader:
+        print(record)
+    bam_reader.close()
+
+    var sam_reader = BamReader(sam_path)
+    print(sam_reader.header())
+    for record in sam_reader:
+        print(record)
+    sam_reader.close()

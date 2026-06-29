@@ -29,8 +29,12 @@ pixi run mojo build \
     -I . \
     -Xlinker -Lbuild \
     -Xlinker -lwrapper \
+    -Xlinker -rpath \
+    -Xlinker '$ORIGIN' \
     -Xlinker -L"$CONDA_PREFIX/lib" \
     -Xlinker -lhts \
+    -Xlinker -rpath \
+    -Xlinker "$CONDA_PREFIX/lib" \
     -o "$BUILD_OUTPUT" \
     "$SOURCE_FILE"
 
